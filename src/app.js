@@ -32,10 +32,26 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
-// Routes Placeholder
+// Import Routes
 import trackRoutes from './routes/trackRoutes.js';
-app.use('/api/v1/track', trackRoutes);
+import projectRoutes from './routes/projectRoutes.js';
+import authRoutes from './routes/authRoutes.js';
+import swaggerUi from 'swagger-ui-express';
+import { readFileSync } from 'fs';
+import { load } from 'js-yaml';
+import { fileURLToPath } from 'url';
+import path from 'path';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const swaggerDocument = load(readFileSync(path.join(__dirname, 'swagger.yaml'), 'utf8'));
+
+// Mount Routes
+app.use('/api/v1/track', trackRoutes);
+app.use('/api/v1/projects', projectRoutes);
+app.use('/api/v1/auth', authRoutes);
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+
+// Health Check Endpoint
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'success', message: 'Server is healthy' });
 });
