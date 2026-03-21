@@ -16,7 +16,7 @@ app.use(express.json());
 
 // CORS configuration
 const corsOptions = {
-  origin: process.env.CORS_ORIGIN === '*' ? '*' : process.env.CORS_ORIGIN,
+  origin: '*',
   optionsSuccessStatus: 200,
 };
 app.use(cors(corsOptions));
