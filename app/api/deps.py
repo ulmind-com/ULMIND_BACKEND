@@ -1,6 +1,6 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import jwt, JWTError
+import jwt
 from bson import ObjectId
 from app.core.config import settings
 from app.db.database import get_db
@@ -19,7 +19,7 @@ async def get_current_admin(token: str = Depends(oauth2_scheme), db=Depends(get_
         admin_id: str = payload.get("id")
         if admin_id is None:
             raise credentials_exception
-    except JWTError:
+    except jwt.InvalidTokenError:
         raise credentials_exception
     
     admin_record = await db["admins"].find_one({"_id": ObjectId(admin_id)})
