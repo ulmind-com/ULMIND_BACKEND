@@ -38,6 +38,6 @@ app.include_router(team.router, prefix=f"{settings.API_V1_STR}/team", tags=["Tea
 app.include_router(stats.router, prefix=f"{settings.API_V1_STR}/stats", tags=["Stats"])
 app.include_router(track.router, prefix=f"{settings.API_V1_STR}/track", tags=["Track"])
 
-@app.get("/health", tags=["Health"])
+@app.get("/", tags=["Health"])
 async def health_check():
     return {"status": "success", "message": "Server is healthy"}
