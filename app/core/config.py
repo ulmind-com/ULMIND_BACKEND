@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     MONGO_URI: str
     CORS_ORIGIN: str = "*"
     NODE_ENV: str = "development"
+    DEBUG: bool = False
     JWT_SECRET: str
     PROJECT_NAME: str = "ulmind-tracking-backend"
     API_V1_STR: str = "/api/v1"

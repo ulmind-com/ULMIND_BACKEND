@@ -23,3 +23,5 @@ class CredentialResponse(CredentialBase):
     id: PyObjectId = Field(alias="_id")
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
+
+    model_config = {"populate_by_name": True}

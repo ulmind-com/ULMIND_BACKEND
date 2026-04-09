@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List, Annotated
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, ConfigDict
 from pydantic.functional_validators import BeforeValidator
 
 PyObjectId = Annotated[str, BeforeValidator(str)]
@@ -30,6 +30,10 @@ class AdminInDB(AdminBase):
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
 
+    model_config = ConfigDict(populate_by_name=True)
+
 class AdminResponse(AdminBase):
     id: PyObjectId = Field(alias="_id")
     must_change_password: bool
+
+    model_config = ConfigDict(populate_by_name=True)
