@@ -9,27 +9,25 @@ class ImageInfo(BaseModel):
     url: str
     public_id: str
 
-class AdminBase(BaseModel):
+class UserBase(BaseModel):
     email: EmailStr
-    role: str = "admin"
+    full_name: str
+    phone: Optional[str] = None
     status: str = "Active"
     profile_photo: Optional[ImageInfo] = None
 
-class AdminCreate(AdminBase):
+class UserCreate(UserBase):
     password: str
 
-class AdminUpdate(BaseModel):
-    email: Optional[EmailStr] = None
-    role: Optional[str] = None
+class UserUpdate(BaseModel):
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
     status: Optional[str] = None
-    must_change_password: Optional[bool] = None
+    email: Optional[EmailStr] = None
 
-class AdminInDB(AdminBase):
+class UserResponse(UserBase):
     id: PyObjectId = Field(alias="_id")
-    must_change_password: bool = True
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
 
-class AdminResponse(AdminBase):
-    id: PyObjectId = Field(alias="_id")
-    must_change_password: bool
+    model_config = {"populate_by_name": True}

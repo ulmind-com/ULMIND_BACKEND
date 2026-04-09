@@ -7,7 +7,7 @@ import logging
 from app.db.database import get_db
 from app.schemas.merchandise import ProductCreate, ProductUpdate, ProductResponse, ImageInfo
 from app.api.deps import get_current_active_admin
-from app.core.cloudinary import upload_image, delete_images
+from app.core.cloudinary import upload_image, delete_images, MERCHANDISE_FOLDER
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -73,7 +73,7 @@ async def create_product(
         for img in images:
             if img.filename:  # skip empty slots
                 file_bytes = await img.read()
-                image_info = await upload_image(file_bytes, img.filename)
+                image_info = await upload_image(file_bytes, img.filename, folder=MERCHANDISE_FOLDER)
                 uploaded_images.append(image_info)
 
     now = datetime.now(timezone.utc)
@@ -152,7 +152,7 @@ async def replace_product_images(
     for img in images:
         if img.filename:
             file_bytes = await img.read()
-            image_info = await upload_image(file_bytes, img.filename)
+            image_info = await upload_image(file_bytes, img.filename, folder=MERCHANDISE_FOLDER)
             new_images.append(image_info)
 
     updated = await db[COLLECTION].find_one_and_update(
