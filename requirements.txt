@@ -11,14 +11,18 @@ anyio==4.13.0
     #   httpx
     #   starlette
     #   watchfiles
-bcrypt==5.0.0
-    # via passlib
+bcrypt==3.2.2
+    # via
+    #   ulmind-tracking-backend (pyproject.toml)
+    #   passlib
 certifi==2026.2.25
     # via
     #   cloudinary
     #   httpcore
     #   httpx
     #   sentry-sdk
+cffi==2.0.0
+    # via bcrypt
 click==8.3.2
     # via
     #   rich-toolkit
@@ -72,6 +76,8 @@ motor==3.7.1
     # via ulmind-tracking-backend (pyproject.toml)
 passlib==1.7.4
     # via ulmind-tracking-backend (pyproject.toml)
+pycparser==3.0
+    # via cffi
 pydantic==2.12.5
     # via
     #   ulmind-tracking-backend (pyproject.toml)
