@@ -1,5 +1,7 @@
 import logging
-from fastapi import FastAPI
+import traceback
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.core.config import settings
@@ -21,6 +23,20 @@ app = FastAPI(
     version="2.0.0",
     lifespan=lifespan
 )
+
+# Global Exception Handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled exception: {exc}")
+    logger.error(traceback.format_exc())
+    return JSONResponse(
+        status_code=500,
+        content={
+            "status": "error",
+            "message": "An internal server error occurred.",
+            "detail": str(exc) if settings.DEBUG else "Internal Server Error"
+        }
+    )
 
 # CORS Middleware
 app.add_middleware(

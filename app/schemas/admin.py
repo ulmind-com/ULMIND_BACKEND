@@ -22,8 +22,8 @@ class AdminUpdate(BaseModel):
 class AdminInDB(AdminBase):
     id: PyObjectId = Field(alias="_id")
     must_change_password: bool = True
-    created_at: datetime
-    updated_at: datetime
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
 
 class AdminResponse(AdminBase):
     id: PyObjectId = Field(alias="_id")

@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, timezone
 from app.db.database import connect_to_mongo, close_mongo_connection, db
 from app.core.security import get_password_hash
 
@@ -17,6 +18,7 @@ INITIAL_PASSWORD = 'ulmind@123'
 async def seed():
     connect_to_mongo()
     hashed = get_password_hash(INITIAL_PASSWORD)
+    now = datetime.now(timezone.utc)
     
     for email in ADMIN_EMAILS:
         existing = await db.db["admins"].find_one({"email": email})
@@ -29,7 +31,9 @@ async def seed():
             "password": hashed,
             "role": "admin",
             "must_change_password": True,
-            "status": "Active"
+            "status": "Active",
+            "created_at": now,
+            "updated_at": now
         }
         await db.db["admins"].insert_one(new_admin)
         print(f"CREATED: {email}")

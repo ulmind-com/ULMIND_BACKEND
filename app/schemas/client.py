@@ -20,5 +20,5 @@ class ClientUpdate(BaseModel):
 
 class ClientResponse(ClientBase):
     id: PyObjectId = Field(alias="_id")
-    created_at: datetime
-    updated_at: datetime
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)

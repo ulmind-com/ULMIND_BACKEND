@@ -50,7 +50,7 @@ class ProductUpdate(BaseModel):
 class ProductResponse(ProductBase):
     id: PyObjectId = Field(alias="_id")
     images: List[ImageInfo] = []
-    created_at: datetime
-    updated_at: datetime
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
 
     model_config = {"populate_by_name": True}

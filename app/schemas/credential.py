@@ -21,5 +21,5 @@ class CredentialUpdate(BaseModel):
 
 class CredentialResponse(CredentialBase):
     id: PyObjectId = Field(alias="_id")
-    created_at: datetime
-    updated_at: datetime
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
