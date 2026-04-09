@@ -15,6 +15,7 @@ bcrypt==5.0.0
     # via passlib
 certifi==2026.2.25
     # via
+    #   cloudinary
     #   httpcore
     #   httpx
     #   sentry-sdk
@@ -23,6 +24,8 @@ click==8.3.2
     #   rich-toolkit
     #   typer
     #   uvicorn
+cloudinary==1.44.1
+    # via ulmind-tracking-backend (pyproject.toml)
 dnspython==2.8.0
     # via
     #   email-validator
@@ -114,6 +117,8 @@ sentry-sdk==2.57.0
     # via fastapi-cloud-cli
 shellingham==1.5.4
     # via typer
+six==1.17.0
+    # via cloudinary
 starlette==1.0.0
     # via fastapi
 typer==0.24.1
@@ -134,7 +139,9 @@ typing-inspection==0.4.2
     #   pydantic
     #   pydantic-settings
 urllib3==2.6.3
-    # via sentry-sdk
+    # via
+    #   cloudinary
+    #   sentry-sdk
 uvicorn==0.44.0
     # via
     #   ulmind-tracking-backend (pyproject.toml)
