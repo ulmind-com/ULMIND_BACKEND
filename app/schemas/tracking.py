@@ -1,6 +1,9 @@
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Annotated
 from pydantic import BaseModel, Field
+from pydantic.functional_validators import BeforeValidator
+
+PyObjectId = Annotated[str, BeforeValidator(str)]
 
 class BatteryInfo(BaseModel):
     level: Optional[float] = None
@@ -61,6 +64,6 @@ class TrackingCreate(TrackingBase):
     pass
 
 class TrackingResponse(TrackingBase):
-    id: str = Field(alias="_id")
+    id: PyObjectId = Field(alias="_id")
     created_at: datetime
     updated_at: datetime

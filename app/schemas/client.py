@@ -1,6 +1,9 @@
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Annotated
 from pydantic import BaseModel, Field
+from pydantic.functional_validators import BeforeValidator
+
+PyObjectId = Annotated[str, BeforeValidator(str)]
 
 class ClientBase(BaseModel):
     companyName: str
@@ -16,6 +19,6 @@ class ClientUpdate(BaseModel):
     status: Optional[str] = None
 
 class ClientResponse(ClientBase):
-    id: str = Field(alias="_id")
+    id: PyObjectId = Field(alias="_id")
     created_at: datetime
     updated_at: datetime
