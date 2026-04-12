@@ -4,7 +4,7 @@ from app.core.datetime_utils import get_now
 from bson import ObjectId
 
 from app.db.database import get_db
-from app.schemas.admin import AdminResponse, AdminUpdate
+from app.schemas.admin import AdminResponse, AdminUpdate, PublicAdminResponse
 from app.api.deps import get_current_active_admin
 from app.core.security import get_password_hash
 from pydantic import BaseModel, EmailStr
@@ -18,6 +18,20 @@ def _parse_id(id: str) -> ObjectId:
         return ObjectId(id)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid admin ID format")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  PUBLIC ENDPOINTS
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/public", response_model=List[PublicAdminResponse])
+async def list_public_team(db=Depends(get_db)):
+    """
+    Publicly list active team members with non-sensitive details.
+    Does not require authentication.
+    """
+    team = await db["admins"].find({"status": "Active"}).to_list(length=100)
+    return team
 
 
 # ══════════════════════════════════════════════════════════════════════════════

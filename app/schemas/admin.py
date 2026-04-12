@@ -67,9 +67,24 @@ class AdminResponse(AdminBase):
 
     model_config = ConfigDict(populate_by_name=True)
 
+class PublicAdminResponse(BaseModel):
+    """Schema for public team display—excludes sensitive data like email and status."""
+    id: PyObjectId = Field(alias="_id")
+    full_name: str
+    profile_photo: Optional[ImageInfo] = None
+    position: Optional[str] = None
+    experience: Optional[str] = None
+    specialization: List[str] = []
+    linkedin_url: Optional[str] = None
+    x_url: Optional[str] = None
+    github_url: Optional[str] = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
 # Rebuild models for Pydantic V2 forward references
 AdminBase.model_rebuild()
 AdminCreate.model_rebuild()
 AdminUpdate.model_rebuild()
 AdminInDB.model_rebuild()
 AdminResponse.model_rebuild()
+PublicAdminResponse.model_rebuild()
