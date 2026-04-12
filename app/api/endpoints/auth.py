@@ -5,7 +5,7 @@ from typing import Optional
 from bson import ObjectId
 from app.db.database import get_db
 from app.core.security import verify_password, create_access_token, get_password_hash
-from app.schemas.admin import AdminResponse, AdminInDB
+from app.schemas.admin import AdminResponse, AdminInDB, AdminUpdate
 from app.api.deps import get_current_admin
 from app.core.cloudinary import upload_image, delete_image, PROFILE_FOLDER
 
