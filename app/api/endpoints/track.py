@@ -25,26 +25,53 @@ async def get_tracking_data(
     data = await cursor.to_list(length=limit)
     return data
 
+# In-memory cache for GeoIP to avoid hitting rate limits for same IPs
+# Format: {ip: {geo_data}}
+GEO_IP_CACHE = {}
+MAX_CACHE_SIZE = 1000
+
 async def get_geo_info(ip: str):
-    if not ip or ip in ("127.0.0.1", "::1", "localhost"):
+    if not ip or ip in ("127.0.0.1", "::1", "localhost", "unknown"):
         return None
+        
+    # 1. Check Cache
+    if ip in GEO_IP_CACHE:
+        return GEO_IP_CACHE[ip]
         
     try:
         async with httpx.AsyncClient() as client:
-            # Using a free IP geolocation API 
-            response = await client.get(f"http://ip-api.com/json/{ip}", timeout=2.0)
+            # Using a free IP geolocation API (ip-api.com)
+            # Higher timeout (5.0s) and explicitly handling HTTP 429 (Rate Limit)
+            response = await client.get(f"http://ip-api.com/json/{ip}", timeout=5.0)
+            
             if response.status_code == 200:
                 data = response.json()
                 if data.get("status") == "success":
-                    return {
+                    geo_info = {
                         "country": data.get("country"),
                         "region": data.get("regionName"),
                         "city": data.get("city"),
                         "timezone": data.get("timezone"),
                         "ll": [data.get("lat"), data.get("lon")]
                     }
+                    
+                    # Store in cache (with simple overflow protection)
+                    if len(GEO_IP_CACHE) < MAX_CACHE_SIZE:
+                        GEO_IP_CACHE[ip] = geo_info
+                    return geo_info
+                else:
+                    logger.info(f"GeoIP Lookup: IP {ip} not found or reserved. Message: {data.get('message')}")
+            elif response.status_code == 429:
+                logger.info(f"GeoIP Rate Limit: Hit 45 req/min limit on ip-api.com")
+            else:
+                logger.debug(f"GeoIP API Error: {response.status_code} for {ip}")
+                
+    except (httpx.TimeoutException, httpx.ConnectError) as e:
+        logger.info(f"GeoIP Timeout/Connection issue for {ip}: {type(e).__name__}")
     except Exception as e:
-        logger.warning(f"GeoIP Error for {ip}: {e}")
+        # Unexpected errors logged as info to keep logs clean
+        logger.info(f"GeoIP unexpected failure for {ip}: {e}")
+        
     return None
 
 @router.post("/")
