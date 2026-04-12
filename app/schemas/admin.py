@@ -19,7 +19,7 @@ class AdminBase(BaseModel):
     # New Bio & Position Fields
     position: Optional[str] = Field(None, description="e.g. CEO, CTO, Developer")
     experience: Optional[str] = Field(None, description="Years or description of experience")
-    specialization: Optional[str] = Field(None, description="e.g. Full Stack, AI, Marketing")
+    specialization: List[str] = Field(default_factory=list, description="e.g. ['REST API', 'React', 'DevOps']")
     
     # Social Links
     linkedin_url: Optional[str] = None
@@ -41,7 +41,7 @@ class AdminUpdate(BaseModel):
     # Professional fields
     position: Optional[str] = None
     experience: Optional[str] = None
-    specialization: Optional[str] = None
+    specialization: Optional[List[str]] = None
     
     # Social links
     linkedin_url: Optional[str] = None

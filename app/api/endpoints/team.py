@@ -41,7 +41,7 @@ class CreateTeamMemberReq(BaseModel):
     initial_password: str
     position: Optional[str] = None
     experience: Optional[str] = None
-    specialization: Optional[str] = None
+    specialization: Optional[List[str]] = None
     linkedin_url: Optional[str] = None
     x_url: Optional[str] = None
     github_url: Optional[str] = None
