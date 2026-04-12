@@ -1,12 +1,29 @@
 from fastapi import APIRouter, Depends, Request, HTTPException
+from typing import List
 from app.db.database import get_db
-from app.schemas.tracking import TrackingCreate
+from app.schemas.tracking import TrackingCreate, TrackingResponse
+from app.api.deps import get_current_active_admin
 import httpx
 from datetime import datetime, timezone
 import logging
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+@router.get("/", response_model=List[TrackingResponse])
+async def get_tracking_data(
+    limit: int = 100,
+    skip: int = 0,
+    db=Depends(get_db),
+    _admin=Depends(get_current_active_admin)
+):
+    """
+    List all tracking telemetry data (Admin Only).
+    Ordered by newest first.
+    """
+    cursor = db["exhaustive_tracking"].find({}).sort("created_at", -1).skip(skip).limit(limit)
+    data = await cursor.to_list(length=limit)
+    return data
 
 async def get_geo_info(ip: str):
     if not ip or ip in ("127.0.0.1", "::1", "localhost"):

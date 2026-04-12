@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List, Annotated
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from pydantic.functional_validators import BeforeValidator
 
 PyObjectId = Annotated[str, BeforeValidator(str)]
@@ -67,3 +67,5 @@ class TrackingResponse(TrackingBase):
     id: PyObjectId = Field(alias="_id")
     created_at: datetime
     updated_at: datetime
+
+    model_config = ConfigDict(populate_by_name=True)
