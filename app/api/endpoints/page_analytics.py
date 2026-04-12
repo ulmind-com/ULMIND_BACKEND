@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Depends, Request, HTTPException, Query
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
+from app.core.datetime_utils import get_now
 from typing import Optional
 import logging
 
@@ -17,7 +17,7 @@ COLLECTION = "page_analytics"
 
 def _get_since(period: str) -> Optional[datetime]:
     """Returns the lower-bound datetime for the given period string."""
-    now = datetime.now(timezone.utc)
+    now = get_now()
     if period == "7d":
         return now - timedelta(days=7)
     if period == "30d":
@@ -47,7 +47,7 @@ async def record_pageview(
         else (request.client.host if request.client else "unknown")
     )
 
-    now = datetime.now(timezone.utc)
+    now = get_now()
     doc_timestamp = payload.timestamp or now
 
     # Upsert strategy: if a record already exists for this (session_id + page),

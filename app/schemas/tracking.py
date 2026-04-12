@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Optional, List, Annotated
+from app.core.datetime_utils import get_now
 from pydantic import BaseModel, Field, ConfigDict
 from pydantic.functional_validators import BeforeValidator
 
@@ -24,7 +25,7 @@ class TrackingBase(BaseModel):
     username: str = "Guest"
     email: str = "Unknown"
     consent_status: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=get_now)
 
     # Hardware & OS
     os: Optional[str] = None

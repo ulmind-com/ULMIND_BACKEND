@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from typing import List
-from datetime import datetime, timezone
+from app.core.datetime_utils import get_now
 from bson import ObjectId
 from app.db.database import get_db
 from app.schemas.client import ClientCreate, ClientResponse
@@ -15,8 +15,8 @@ async def get_clients(db=Depends(get_db)):
 @router.post("/", response_model=ClientResponse, status_code=201)
 async def create_client(client_in: ClientCreate, db=Depends(get_db)):
     client_dict = client_in.model_dump()
-    client_dict["created_at"] = datetime.now(timezone.utc)
-    client_dict["updated_at"] = datetime.now(timezone.utc)
+    client_dict["created_at"] = get_now()
+    client_dict["updated_at"] = get_now()
     
     result = await db["clients"].insert_one(client_dict)
     

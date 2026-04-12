@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Optional, List, Annotated
+from app.core.datetime_utils import get_now
 from pydantic import BaseModel, EmailStr, Field, ConfigDict
 from pydantic.functional_validators import BeforeValidator
 
@@ -53,8 +54,8 @@ class AdminUpdate(BaseModel):
 class AdminInDB(AdminBase):
     id: PyObjectId = Field(alias="_id")
     must_change_password: bool = True
-    created_at: datetime = Field(alias="createdAt", default_factory=datetime.now)
-    updated_at: datetime = Field(alias="updatedAt", default_factory=datetime.now)
+    created_at: datetime = Field(alias="createdAt", default_factory=get_now)
+    updated_at: datetime = Field(alias="updatedAt", default_factory=get_now)
 
     model_config = ConfigDict(populate_by_name=True)
 

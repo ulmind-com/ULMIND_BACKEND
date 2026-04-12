@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timezone
+from app.core.datetime_utils import get_now
 from app.db.database import connect_to_mongo, close_mongo_connection, db
 from app.core.security import get_password_hash
 
@@ -23,7 +23,7 @@ async def seed():
     await db.db["admins"].delete_many({})
     
     hashed = get_password_hash(INITIAL_PASSWORD)
-    now = datetime.now(timezone.utc)
+    now = get_now()
     
     print(f"--- 🌱 Seeding {len(ADMIN_EMAILS)} Admins ---")
     

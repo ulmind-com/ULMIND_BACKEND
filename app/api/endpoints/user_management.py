@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from typing import List, Optional
-from datetime import datetime, timezone
+from app.core.datetime_utils import get_now
 from bson import ObjectId
 
 from app.db.database import get_db
@@ -58,7 +58,7 @@ async def create_public_user(
         image_info = await upload_image(file_bytes, profile_photo.filename, folder=USER_FOLDER)
         
     hashed_password = get_password_hash(password)
-    now = datetime.now(timezone.utc)
+    now = get_now()
     
     doc = {
         "email": email,
@@ -101,7 +101,7 @@ async def update_public_user(
     if not update_data:
         raise HTTPException(status_code=400, detail="No fields provided for update")
         
-    update_data["updated_at"] = datetime.now(timezone.utc)
+    update_data["updated_at"] = get_now()
     
     result = await db[COLLECTION].find_one_and_update(
         {"_id": _parse_id(id)},

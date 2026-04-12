@@ -4,7 +4,7 @@ from app.db.database import get_db
 from app.schemas.tracking import TrackingCreate, TrackingResponse
 from app.api.deps import get_current_active_admin
 import httpx
-from datetime import datetime, timezone
+from app.core.datetime_utils import get_now
 import logging
 
 router = APIRouter()
@@ -89,9 +89,9 @@ async def track_data(request: Request, track_in: TrackingCreate, db=Depends(get_
     if geo_data:
         tracking_dict["geo"] = geo_data
         
-    tracking_dict["timestamp"] = tracking_dict.get("timestamp", datetime.now(timezone.utc))
-    tracking_dict["created_at"] = datetime.now(timezone.utc)
-    tracking_dict["updated_at"] = datetime.now(timezone.utc)
+    tracking_dict["timestamp"] = tracking_dict.get("timestamp", get_now())
+    tracking_dict["created_at"] = get_now()
+    tracking_dict["updated_at"] = get_now()
     
     try:
         await db["exhaustive_tracking"].insert_one(tracking_dict)

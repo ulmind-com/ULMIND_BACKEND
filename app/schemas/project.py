@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Optional, List, Annotated
+from app.core.datetime_utils import get_now
 from pydantic import BaseModel, EmailStr, Field
 from pydantic.functional_validators import BeforeValidator
 import uuid
@@ -115,8 +116,8 @@ class ProjectResponse(ProjectBase):
     id: PyObjectId = Field(alias="_id")
     deployments: List[DeploymentInDB] = []
     env_vars: List[EnvVarInDB] = []
-    created_at: datetime = Field(alias="createdAt", default_factory=datetime.now)
-    updated_at: datetime = Field(alias="updatedAt", default_factory=datetime.now)
+    created_at: datetime = Field(alias="createdAt", default_factory=get_now)
+    updated_at: datetime = Field(alias="updatedAt", default_factory=get_now)
 
     model_config = {"populate_by_name": True}
 
@@ -131,7 +132,7 @@ class ProjectSummaryResponse(BaseModel):
     cost: float
     currency: str
     payment_status: str
-    created_at: datetime = Field(alias="createdAt", default_factory=datetime.now)
-    updated_at: datetime = Field(alias="updatedAt", default_factory=datetime.now)
+    created_at: datetime = Field(alias="createdAt", default_factory=get_now)
+    updated_at: datetime = Field(alias="updatedAt", default_factory=get_now)
 
     model_config = {"populate_by_name": True}

@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Optional, Annotated
+from app.core.datetime_utils import get_now
 from pydantic import BaseModel, Field
 from pydantic.functional_validators import BeforeValidator
 
@@ -20,7 +21,7 @@ class ClientUpdate(BaseModel):
 
 class ClientResponse(ClientBase):
     id: PyObjectId = Field(alias="_id")
-    created_at: datetime = Field(alias="createdAt", default_factory=datetime.now)
-    updated_at: datetime = Field(alias="updatedAt", default_factory=datetime.now)
+    created_at: datetime = Field(alias="createdAt", default_factory=get_now)
+    updated_at: datetime = Field(alias="updatedAt", default_factory=get_now)
 
     model_config = {"populate_by_name": True}

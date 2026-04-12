@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from typing import List, Optional
-from datetime import datetime, timezone
+from app.core.datetime_utils import get_now
 from bson import ObjectId
 import logging
 
@@ -76,7 +76,7 @@ async def create_product(
                 image_info = await upload_image(file_bytes, img.filename, folder=MERCHANDISE_FOLDER)
                 uploaded_images.append(image_info)
 
-    now = datetime.now(timezone.utc)
+    now = get_now()
     doc = {
         "name": name,
         "caption": caption,
@@ -110,7 +110,7 @@ async def update_product(
     if not update_data:
         raise HTTPException(status_code=400, detail="No fields provided for update")
 
-    update_data["updated_at"] = datetime.now(timezone.utc)
+    update_data["updated_at"] = get_now()
 
     result = await db[COLLECTION].find_one_and_update(
         {"_id": _parse_id(id)},
@@ -157,7 +157,7 @@ async def replace_product_images(
 
     updated = await db[COLLECTION].find_one_and_update(
         {"_id": obj_id},
-        {"$set": {"images": new_images, "updated_at": datetime.now(timezone.utc)}},
+        {"$set": {"images": new_images, "updated_at": get_now()}},
         return_document=True,
     )
     return updated

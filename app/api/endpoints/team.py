@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import List, Optional
-from datetime import datetime, timezone
+from app.core.datetime_utils import get_now
 from bson import ObjectId
 
 from app.db.database import get_db
@@ -59,7 +59,7 @@ async def create_team_member(
         raise HTTPException(status_code=409, detail="User with this email already exists")
         
     hashed_password = get_password_hash(data.initial_password)
-    now = datetime.now(timezone.utc)
+    now = get_now()
     
     new_admin = data.model_dump(exclude={"initial_password"})
     new_admin.update({
@@ -100,7 +100,7 @@ async def update_team_member(
     if not update_data:
         raise HTTPException(status_code=400, detail="No data to update")
         
-    update_data["updated_at"] = datetime.now(timezone.utc)
+    update_data["updated_at"] = get_now()
     
     result = await db["admins"].find_one_and_update(
         {"_id": _parse_id(id)},

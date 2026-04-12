@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from pydantic import BaseModel, Field
-from datetime import datetime, timezone
+from app.core.datetime_utils import get_now
 from typing import Optional
 from bson import ObjectId
 from app.db.database import get_db
@@ -54,7 +54,7 @@ async def update_my_profile(
     if not update_data:
         raise HTTPException(status_code=400, detail="No data provided")
         
-    update_data["updated_at"] = datetime.now(timezone.utc)
+    update_data["updated_at"] = get_now()
     
     result = await db["admins"].find_one_and_update(
         {"_id": ObjectId(current_admin.id)},
@@ -113,7 +113,7 @@ async def update_my_profile_photo(
         {"_id": ObjectId(current_admin.id)},
         {"$set": {
             "profile_photo": image_info,
-            "updated_at": datetime.now(timezone.utc)
+            "updated_at": get_now()
         }},
         return_document=True
     )
@@ -133,7 +133,7 @@ async def delete_my_profile_photo(
     result = await db["admins"].find_one_and_update(
         {"_id": ObjectId(current_admin.id)},
         {
-            "$set": {"updated_at": datetime.now(timezone.utc)},
+            "$set": {"updated_at": get_now()},
             "$unset": {"profile_photo": ""}
         },
         return_document=True

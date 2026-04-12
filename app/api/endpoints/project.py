@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from typing import List
-from datetime import datetime, timezone
+from app.core.datetime_utils import get_now
 from bson import ObjectId
 import uuid
 import logging
@@ -53,7 +53,7 @@ async def create_project(
     _admin=Depends(get_current_active_admin),
 ):
     """Create a new project with optional initial deployments and env vars."""
-    now = datetime.now(timezone.utc)
+    now = get_now()
 
     # Assign UUIDs to each embedded sub-document
     deployments = [
@@ -103,7 +103,7 @@ async def update_project(
     if not update_data:
         raise HTTPException(status_code=400, detail="No fields provided for update")
 
-    update_data["updated_at"] = datetime.now(timezone.utc)
+    update_data["updated_at"] = get_now()
 
     result = await db[COLLECTION].find_one_and_update(
         {"_id": _parse_id(id)},
@@ -147,7 +147,7 @@ async def add_env_var(
         {"_id": obj_id},
         {
             "$push": {"env_vars": new_env},
-            "$set": {"updated_at": datetime.now(timezone.utc)},
+            "$set": {"updated_at": get_now()},
         },
         return_document=True,
     )
@@ -172,7 +172,7 @@ async def update_env_var(
 
     # Build positional $set for the matched array element
     set_fields = {f"env_vars.$.{k}": v for k, v in update_data.items()}
-    set_fields["updated_at"] = datetime.now(timezone.utc)
+    set_fields["updated_at"] = get_now()
 
     result = await db[COLLECTION].find_one_and_update(
         {"_id": obj_id, "env_vars.id": env_id},
@@ -198,7 +198,7 @@ async def delete_env_var(
         {"_id": obj_id},
         {
             "$pull": {"env_vars": {"id": env_id}},
-            "$set": {"updated_at": datetime.now(timezone.utc)},
+            "$set": {"updated_at": get_now()},
         },
         return_document=True,
     )
@@ -226,7 +226,7 @@ async def add_deployment(
         {"_id": obj_id},
         {
             "$push": {"deployments": new_dep},
-            "$set": {"updated_at": datetime.now(timezone.utc)},
+            "$set": {"updated_at": get_now()},
         },
         return_document=True,
     )
@@ -250,7 +250,7 @@ async def update_deployment(
         raise HTTPException(status_code=400, detail="No fields provided for update")
 
     set_fields = {f"deployments.$.{k}": v for k, v in update_data.items()}
-    set_fields["updated_at"] = datetime.now(timezone.utc)
+    set_fields["updated_at"] = get_now()
 
     result = await db[COLLECTION].find_one_and_update(
         {"_id": obj_id, "deployments.id": dep_id},
@@ -276,7 +276,7 @@ async def delete_deployment(
         {"_id": obj_id},
         {
             "$pull": {"deployments": {"id": dep_id}},
-            "$set": {"updated_at": datetime.now(timezone.utc)},
+            "$set": {"updated_at": get_now()},
         },
         return_document=True,
     )
