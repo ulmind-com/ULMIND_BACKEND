@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime, timezone
 from typing import Optional
 from bson import ObjectId
@@ -12,12 +12,22 @@ from app.core.cloudinary import upload_image, delete_image, PROFILE_FOLDER
 router = APIRouter()
 
 class LoginJSON(BaseModel):
-    email: str
+    username: str = Field(..., description="Email address or Admin ID")
     password: str
 
 @router.post("/login")
 async def login(login_data: LoginJSON, db=Depends(get_db)):
-    admin = await db["admins"].find_one({"email": login_data.email})
+    # 1. Determine if username is an Email or an ID
+    query = {}
+    try:
+        # Check if it's a valid MongoDB ObjectId
+        obj_id = ObjectId(login_data.username)
+        query = {"$or": [{"email": login_data.username}, {"_id": obj_id}]}
+    except Exception:
+        # Not a valid ObjectId, search by email only
+        query = {"email": login_data.username}
+        
+    admin = await db["admins"].find_one(query)
     if not admin:
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
@@ -29,8 +39,29 @@ async def login(login_data: LoginJSON, db=Depends(get_db)):
     return {
         "token": token,
         "must_change_password": admin.get("must_change_password", True),
-        "email": admin["email"]
+        "email": admin["email"],
+        "id": str(admin["_id"])
     }
+
+@router.patch("/me", response_model=AdminResponse)
+async def update_my_profile(
+    data: AdminUpdate,
+    current_admin=Depends(get_current_admin),
+    db=Depends(get_db)
+):
+    """Allows the logged-in admin to update their own professional bio and details."""
+    update_data = data.model_dump(exclude_unset=True)
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No data provided")
+        
+    update_data["updated_at"] = datetime.now(timezone.utc)
+    
+    result = await db["admins"].find_one_and_update(
+        {"_id": ObjectId(current_admin.id)},
+        {"$set": update_data},
+        return_document=True
+    )
+    return result
 
 class ChangePasswordReq(BaseModel):
     current_password: str

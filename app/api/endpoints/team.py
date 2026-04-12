@@ -35,9 +35,16 @@ async def list_team_members(
 
 
 class CreateTeamMemberReq(BaseModel):
+    full_name: str
     email: EmailStr
     role: str = "editor"
     initial_password: str
+    position: Optional[str] = None
+    experience: Optional[str] = None
+    specialization: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    x_url: Optional[str] = None
+    github_url: Optional[str] = None
 
 
 @router.post("/", response_model=AdminResponse, status_code=201)
@@ -54,15 +61,14 @@ async def create_team_member(
     hashed_password = get_password_hash(data.initial_password)
     now = datetime.now(timezone.utc)
     
-    new_admin = {
-        "email": data.email,
-        "role": data.role,
+    new_admin = data.model_dump(exclude={"initial_password"})
+    new_admin.update({
         "password": hashed_password,
         "must_change_password": True,
         "status": "Active",
         "created_at": now,
         "updated_at": now
-    }
+    })
     
     result = await db["admins"].insert_one(new_admin)
     created = await db["admins"].find_one({"_id": result.inserted_id})
