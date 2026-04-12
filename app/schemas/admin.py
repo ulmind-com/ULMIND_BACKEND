@@ -53,13 +53,15 @@ class AdminUpdate(BaseModel):
 class AdminInDB(AdminBase):
     id: PyObjectId = Field(alias="_id")
     must_change_password: bool = True
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(alias="createdAt", default_factory=datetime.now)
+    updated_at: datetime = Field(alias="updatedAt", default_factory=datetime.now)
 
     model_config = ConfigDict(populate_by_name=True)
 
 class AdminResponse(AdminBase):
     id: PyObjectId = Field(alias="_id")
     must_change_password: bool
+    created_at: datetime = Field(alias="createdAt")
+    updated_at: datetime = Field(alias="updatedAt")
 
     model_config = ConfigDict(populate_by_name=True)

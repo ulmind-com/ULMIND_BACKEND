@@ -16,29 +16,41 @@ ADMIN_EMAILS = [
 INITIAL_PASSWORD = 'ulmind@123'
 
 async def seed():
+    print("--- 🗑️  Clearing Existing Admin Data ---")
     connect_to_mongo()
+    
+    # 1. Clear existing admins
+    await db.db["admins"].delete_many({})
+    
     hashed = get_password_hash(INITIAL_PASSWORD)
     now = datetime.now(timezone.utc)
     
+    print(f"--- 🌱 Seeding {len(ADMIN_EMAILS)} Admins ---")
+    
     for email in ADMIN_EMAILS:
-        existing = await db.db["admins"].find_one({"email": email})
-        if existing:
-            print(f"SKIP: Admin already exists -> {email}")
-            continue
-            
+        # Derive full_name from email
+        name_part = email.split("@")[0].title().replace(".", " ").replace("_", " ")
+        
         new_admin = {
+            "full_name": name_part,
             "email": email,
             "password": hashed,
             "role": "admin",
             "must_change_password": True,
             "status": "Active",
+            "position": None,
+            "experience": None,
+            "specialization": [],
+            "linkedin_url": None,
+            "x_url": None,
+            "github_url": None,
             "created_at": now,
             "updated_at": now
         }
         await db.db["admins"].insert_one(new_admin)
-        print(f"CREATED: {email}")
+        print(f"CREATED: {email} (ID: {name_part})")
         
-    print("\nSeeding complete.")
+    print("\n✅ Reset and Seeding complete.")
     close_mongo_connection()
 
 if __name__ == "__main__":
