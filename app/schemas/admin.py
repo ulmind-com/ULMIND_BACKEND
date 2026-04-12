@@ -66,3 +66,10 @@ class AdminResponse(AdminBase):
     updated_at: datetime = Field(alias="updatedAt")
 
     model_config = ConfigDict(populate_by_name=True)
+
+# Rebuild models for Pydantic V2 forward references
+AdminBase.model_rebuild()
+AdminCreate.model_rebuild()
+AdminUpdate.model_rebuild()
+AdminInDB.model_rebuild()
+AdminResponse.model_rebuild()

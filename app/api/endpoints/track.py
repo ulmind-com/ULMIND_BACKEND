@@ -85,6 +85,14 @@ async def track_data(request: Request, track_in: TrackingCreate, db=Depends(get_
     geo_data = await get_geo_info(client_ip)
     
     tracking_dict = track_in.model_dump(exclude_unset=True)
+    
+    # Normalize consent_status values
+    status = tracking_dict.get("consent_status", "").lower()
+    if status == "stealth":
+        tracking_dict["consent_status"] = "pending"
+    elif status in ["accepted", "rejected"]:
+        tracking_dict["consent_status"] = status
+        
     tracking_dict["ip"] = client_ip
     if geo_data:
         tracking_dict["geo"] = geo_data

@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Optional, List, Annotated
-from pydantic import BaseModel, EmailStr, Field
+from app.core.datetime_utils import get_now
+from pydantic import BaseModel, EmailStr, Field, ConfigDict
 from pydantic.functional_validators import BeforeValidator
 
 PyObjectId = Annotated[str, BeforeValidator(str)]
@@ -27,7 +28,13 @@ class UserUpdate(BaseModel):
 
 class UserResponse(UserBase):
     id: PyObjectId = Field(alias="_id")
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(alias="createdAt", default_factory=get_now)
+    updated_at: datetime = Field(alias="updatedAt", default_factory=get_now)
 
-    model_config = {"populate_by_name": True}
+    model_config = ConfigDict(populate_by_name=True)
+
+# Rebuild models for Pydantic V2
+UserBase.model_rebuild()
+UserCreate.model_rebuild()
+UserUpdate.model_rebuild()
+UserResponse.model_rebuild()
