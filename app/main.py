@@ -38,11 +38,11 @@ async def global_exception_handler(request: Request, exc: Exception):
         }
     )
 
-# CORS Middleware
+# CORS Middleware - Permissive for tracking and frontend development
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,  # Set to False to allow wildcard origins with Bearer tokens
     allow_methods=["*"],
     allow_headers=["*"],
 )
