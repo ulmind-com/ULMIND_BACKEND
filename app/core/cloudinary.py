@@ -25,6 +25,7 @@ cloudinary.config(
 MERCHANDISE_FOLDER = "ulmind/merchandise"
 PROFILE_FOLDER = "ulmind/profiles"
 USER_FOLDER = "ulmind/users"
+OFFERS_FOLDER = "ulmind/offers"
 GENERAL_FOLDER = "ulmind/general"
 
 
