@@ -25,14 +25,24 @@ RESEND_API_URL = "https://api.resend.com/emails"
 
 def _get_from_address() -> str:
     """
-    If a custom sender is configured and domain is verified, use it.
-    Otherwise fall back to Resend's default test sender.
+    If a verified custom domain email is configured, use it.
+    Otherwise, fallback to Resend's default onboarding@resend.dev.
+    Resend strictly forbids sending FROM public webmail addresses (like @gmail.com).
     """
-    if settings.MAIL_ADDRESS and settings.MAIL_ADDRESS.strip():
-        name = settings.MAIL_FROM_NAME or "ULMiND Team"
-        return f"{name} <{settings.MAIL_ADDRESS}>"
-    # Resend's shared domain — works with ANY API key, no setup needed
-    return "ULMiND <onboarding@resend.dev>"
+    mail_addr = settings.MAIL_ADDRESS
+    if mail_addr and mail_addr.strip():
+        mail_addr = mail_addr.strip().lower()
+        # List of public domains that cannot be verified in Resend
+        public_domains = ["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "live.com", "icloud.com", "mail.com", "gmx.com", "aol.com"]
+        domain = mail_addr.split("@")[-1]
+        
+        if domain not in public_domains:
+            name = settings.MAIL_FROM_NAME or "ULMiND Team"
+            return f"{name} <{settings.MAIL_ADDRESS}>"
+            
+    # Fallback to Resend's default sender for unverified custom domains/testing
+    return "ULMiND Team <onboarding@resend.dev>"
+
 
 
 def _build_html_body(otp: str) -> str:

@@ -7,11 +7,13 @@ ADMIN_EMAILS = [
     'soumyajit.banerjee@ulmind.com',
     'arnab.senapati@ulmind.com',
     'samiran.samanta@ulmind.com',
+    'samiran.samanta.dev@gmail.com',  # For testing Resend OTP delivery
     'sagnik.mondal@ulmind.com',
     'thirtha.ghosh@ulmind.in',
     'swastika.roy@ulmind.in',
     'roni.routh@ulmind.in',
 ]
+
 
 INITIAL_PASSWORD = 'ulmind@123'
 
