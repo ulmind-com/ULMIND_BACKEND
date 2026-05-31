@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Request
 from pydantic import BaseModel, Field
 from app.core.datetime_utils import get_now
 from typing import Optional
@@ -6,10 +6,13 @@ from bson import ObjectId
 from app.db.database import get_db
 from app.core.security import verify_password, create_access_token, get_password_hash
 from app.schemas.admin import AdminResponse, AdminInDB, AdminUpdate
+from app.schemas.otp import ForgotPasswordRequest, VerifyOTPRequest, ResetPasswordRequest
 from app.api.deps import get_current_admin
 from app.core.cloudinary import upload_image, delete_image, PROFILE_FOLDER
+from app.services import otp_service
 
 router = APIRouter()
+
 
 class LoginJSON(BaseModel):
     username: str = Field(..., description="Email address or Admin ID")
@@ -139,3 +142,49 @@ async def delete_my_profile_photo(
         return_document=True
     )
     return result
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  FORGOT PASSWORD — OTP FLOW
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.post("/forgot-password")
+async def forgot_password(
+    body: ForgotPasswordRequest,
+    request: Request,
+    db=Depends(get_db),
+):
+    """
+    Step 1 — Request a 6-digit OTP to be sent to the given email.
+    Rate limited: 5 requests/hour per email, 10 requests/hour per IP.
+    Returns 404 if the user does not exist.
+    """
+    return await otp_service.request_otp(db, email=body.email, request=request)
+
+
+@router.post("/verify-reset-otp")
+async def verify_reset_otp(
+    body: VerifyOTPRequest,
+    db=Depends(get_db),
+):
+    """
+    Step 2 — Verify the OTP entered by the user.
+    On success, returns a 15-minute JWT reset_token.
+    The OTP is single-use and locked after 10 failed attempts.
+    """
+    return await otp_service.verify_otp(db, email=body.email, otp=body.otp)
+
+
+@router.post("/reset-password")
+async def reset_password(
+    body: ResetPasswordRequest,
+    db=Depends(get_db),
+):
+    """
+    Step 3 — Set a new password using the reset_token from step 2.
+    Validates password policy (min 8 chars, uppercase, lowercase, digit, special char).
+    """
+    return await otp_service.reset_password(
+        db, reset_token=body.reset_token, new_password=body.new_password
+    )
+
