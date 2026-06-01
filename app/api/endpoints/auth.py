@@ -9,6 +9,8 @@ from app.schemas.admin import AdminResponse, AdminInDB, AdminUpdate
 from app.schemas.otp import ForgotPasswordRequest, VerifyOTPRequest, ResetPasswordRequest
 from app.api.deps import get_current_admin
 from app.core.cloudinary import upload_image, delete_image, PROFILE_FOLDER
+from datetime import timedelta
+from app.core.limiter import limiter
 from app.services import otp_service
 
 router = APIRouter()
@@ -19,7 +21,8 @@ class LoginJSON(BaseModel):
     password: str
 
 @router.post("/login")
-async def login(login_data: LoginJSON, db=Depends(get_db)):
+@limiter.limit("5/minute")
+async def login(request: Request, login_data: LoginJSON, db=Depends(get_db)):
     # 1. Determine if username is an Email or an ID
     query = {}
     try:
@@ -34,8 +37,28 @@ async def login(login_data: LoginJSON, db=Depends(get_db)):
     if not admin:
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
+    # Check if account is locked
+    now = get_now()
+    if admin.get("lockout_until") and admin["lockout_until"] > now:
+        remaining_time = int((admin["lockout_until"] - now).total_seconds() / 60)
+        raise HTTPException(status_code=403, detail=f"Too many failed attempts. Account locked for {remaining_time} minutes.")
+    
     if not verify_password(login_data.password, admin["password"]):
+        # Increment failed attempts
+        failed_attempts = admin.get("failed_login_attempts", 0) + 1
+        update_data = {"failed_login_attempts": failed_attempts}
+        
+        if failed_attempts >= 5:
+            update_data["lockout_until"] = now + timedelta(minutes=15)
+            
+        await db["admins"].update_one({"_id": admin["_id"]}, {"$set": update_data})
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+    # Successful login, reset counters
+    await db["admins"].update_one(
+        {"_id": admin["_id"]},
+        {"$set": {"failed_login_attempts": 0}, "$unset": {"lockout_until": ""}}
+    )
     
     token = create_access_token(data={"id": str(admin["_id"]), "email": admin["email"], "role": admin["role"]})
     
