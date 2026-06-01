@@ -1,6 +1,7 @@
 from motor.motor_asyncio import AsyncIOMotorClient
 from app.core.config import settings
 import logging
+import certifi
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +13,7 @@ db = Database()
 
 def connect_to_mongo():
     try:
-        db.client = AsyncIOMotorClient(settings.MONGO_URI)
+        db.client = AsyncIOMotorClient(settings.MONGO_URI, tlsCAFile=certifi.where())
         db.db = db.client.get_default_database()
         logger.info("Connected to MongoDB via Motor.")
     except Exception as e:

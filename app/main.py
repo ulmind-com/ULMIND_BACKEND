@@ -6,7 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.db.database import connect_to_mongo, close_mongo_connection
-from app.api.endpoints import auth, client, project, team, stats, track, page_analytics, merchandise, user_management, offers
+from app.api.endpoints import auth, client, project, team, stats, track, page_analytics, merchandise, user_management, offers, sheets, ai
+from app.api import websockets
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -57,6 +58,9 @@ app.include_router(page_analytics.router, prefix=f"{settings.API_V1_STR}/analyti
 app.include_router(merchandise.router, prefix=f"{settings.API_V1_STR}/merchandise", tags=["Merchandise"])
 app.include_router(user_management.router, prefix=f"{settings.API_V1_STR}/user-management", tags=["User Management"])
 app.include_router(offers.router, prefix=f"{settings.API_V1_STR}/offers", tags=["Offers"])
+app.include_router(sheets.router, prefix=f"{settings.API_V1_STR}/sheets", tags=["Sheets"])
+app.include_router(ai.router, prefix=f"{settings.API_V1_STR}/ai", tags=["AI"])
+app.include_router(websockets.router, tags=["WebSockets"])
 
 @app.get("/", tags=["Health"])
 async def health_check():
