@@ -40,3 +40,8 @@ async def get_current_active_admin(current_admin: AdminInDB = Depends(get_curren
     if current_admin.status != "Active":
         raise HTTPException(status_code=400, detail="Inactive admin")
     return current_admin
+
+async def get_current_super_admin(current_admin: AdminInDB = Depends(get_current_active_admin)):
+    if current_admin.role.lower() != "super_admin":
+        raise HTTPException(status_code=403, detail="Super admin privileges required")
+    return current_admin

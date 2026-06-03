@@ -10,7 +10,7 @@ from slowapi.errors import RateLimitExceeded
 from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.db.database import connect_to_mongo, close_mongo_connection
-from app.api.endpoints import auth, client, project, team, stats, track, page_analytics, merchandise, user_management, offers, sheets, ai
+from app.api.endpoints import auth, client, project, team, stats, track, page_analytics, merchandise, user_management, offers, sheets, ai, activity
 from app.api import websockets
 
 logging.basicConfig(level=logging.INFO)
@@ -81,6 +81,7 @@ app.include_router(user_management.router, prefix=f"{settings.API_V1_STR}/user-m
 app.include_router(offers.router, prefix=f"{settings.API_V1_STR}/offers", tags=["Offers"])
 app.include_router(sheets.router, prefix=f"{settings.API_V1_STR}/sheets", tags=["Sheets"])
 app.include_router(ai.router, prefix=f"{settings.API_V1_STR}/ai", tags=["AI"])
+app.include_router(activity.router, prefix=f"{settings.API_V1_STR}/activity", tags=["Activity"])
 app.include_router(websockets.router, tags=["WebSockets"])
 
 @app.get("/", tags=["Health"])

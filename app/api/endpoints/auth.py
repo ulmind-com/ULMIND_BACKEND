@@ -60,13 +60,24 @@ async def login(request: Request, login_data: LoginJSON, db=Depends(get_db)):
         {"$set": {"failed_login_attempts": 0}, "$unset": {"lockout_until": ""}}
     )
     
+    session_data = {
+        "admin_id": str(admin["_id"]),
+        "login_time": get_now(),
+        "last_heartbeat": get_now(),
+        "is_online": True,
+        "duration_minutes": 0.0
+    }
+    session_result = await db["admin_activity"].insert_one(session_data)
+    session_id = str(session_result.inserted_id)
+
     token = create_access_token(data={"id": str(admin["_id"]), "email": admin["email"], "role": admin["role"]})
     
     return {
         "token": token,
         "must_change_password": admin.get("must_change_password", True),
         "email": admin["email"],
-        "id": str(admin["_id"])
+        "id": str(admin["_id"]),
+        "session_id": session_id
     }
 
 @router.patch("/me", response_model=AdminResponse)
@@ -114,6 +125,25 @@ async def change_password(
     )
     
     return {"message": "Password changed successfully"}
+
+class LogoutReq(BaseModel):
+    session_id: str
+
+@router.post("/logout")
+async def logout(
+    req: LogoutReq,
+    current_admin=Depends(get_current_admin),
+    db=Depends(get_db)
+):
+    session = await db["admin_activity"].find_one({"_id": ObjectId(req.session_id), "admin_id": str(current_admin.id)})
+    if session:
+        now = get_now()
+        duration = (now - session["login_time"]).total_seconds() / 60.0
+        await db["admin_activity"].update_one(
+            {"_id": ObjectId(req.session_id)},
+            {"$set": {"logout_time": now, "is_online": False, "duration_minutes": round(duration, 2)}}
+        )
+    return {"message": "Logged out successfully"}
 
 @router.get("/me", response_model=AdminResponse)
 async def get_me(current_admin=Depends(get_current_admin)):
