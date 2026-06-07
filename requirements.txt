@@ -15,6 +15,10 @@ bcrypt==3.2.2
     # via
     #   ulmind-tracking-backend (pyproject.toml)
     #   passlib
+limits>=3.0.0
+    # via slowapi
+slowapi>=0.1.9
+    # via ulmind-tracking-backend (pyproject.toml)
 certifi==2026.2.25
     # via
     #   cloudinary
