@@ -12,6 +12,7 @@ from app.schemas.project import (
     DeploymentCreate, DeploymentUpdate, DeploymentInDB,
     EnvVarCreate, EnvVarUpdate, EnvVarInDB,
 )
+from app.services.event_trigger_service import fire_event_background
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -75,6 +76,17 @@ async def create_project(
 
     result = await db[COLLECTION].insert_one(doc)
     created = await db[COLLECTION].find_one({"_id": result.inserted_id})
+    
+    # Trigger AI event
+    fire_event_background(
+        event_type="project_created",
+        resource_type="projects",
+        resource_id=str(result.inserted_id),
+        user_email=_admin.get("email", "admin"),
+        data=project_in.model_dump(),
+        db=db
+    )
+    
     return created
 
 
@@ -129,84 +141,6 @@ async def delete_project(
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  ENV VARS SUB-RESOURCE
-# ══════════════════════════════════════════════════════════════════════════════
-
-@router.post("/{id}/env", response_model=ProjectResponse)
-async def add_env_var(
-    id: str,
-    env_in: EnvVarCreate,
-    db=Depends(get_db),
-    _admin=Depends(get_current_active_admin),
-):
-    """Add a new environment variable to the project."""
-    obj_id = _parse_id(id)
-    new_env = {**env_in.model_dump(), "id": str(uuid.uuid4())}
-
-    result = await db[COLLECTION].find_one_and_update(
-        {"_id": obj_id},
-        {
-            "$push": {"env_vars": new_env},
-            "$set": {"updated_at": get_now()},
-        },
-        return_document=True,
-    )
-    if not result:
-        raise HTTPException(status_code=404, detail="Project not found")
-    return result
-
-
-@router.put("/{id}/env/{env_id}", response_model=ProjectResponse)
-async def update_env_var(
-    id: str,
-    env_id: str,
-    env_in: EnvVarUpdate,
-    db=Depends(get_db),
-    _admin=Depends(get_current_active_admin),
-):
-    """Update a specific environment variable by its ID."""
-    obj_id = _parse_id(id)
-    update_data = env_in.model_dump(exclude_unset=True)
-    if not update_data:
-        raise HTTPException(status_code=400, detail="No fields provided for update")
-
-    # Build positional $set for the matched array element
-    set_fields = {f"env_vars.$.{k}": v for k, v in update_data.items()}
-    set_fields["updated_at"] = get_now()
-
-    result = await db[COLLECTION].find_one_and_update(
-        {"_id": obj_id, "env_vars.id": env_id},
-        {"$set": set_fields},
-        return_document=True,
-    )
-    if not result:
-        raise HTTPException(status_code=404, detail="Project or env variable not found")
-    return result
-
-
-@router.delete("/{id}/env/{env_id}", response_model=ProjectResponse)
-async def delete_env_var(
-    id: str,
-    env_id: str,
-    db=Depends(get_db),
-    _admin=Depends(get_current_active_admin),
-):
-    """Remove an environment variable from the project."""
-    obj_id = _parse_id(id)
-
-    result = await db[COLLECTION].find_one_and_update(
-        {"_id": obj_id},
-        {
-            "$pull": {"env_vars": {"id": env_id}},
-            "$set": {"updated_at": get_now()},
-        },
-        return_document=True,
-    )
-    if not result:
-        raise HTTPException(status_code=404, detail="Project not found")
-    return result
-
-
 # ══════════════════════════════════════════════════════════════════════════════
 #  DEPLOYMENTS SUB-RESOURCE
 # ══════════════════════════════════════════════════════════════════════════════

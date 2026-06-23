@@ -3,13 +3,22 @@ from typing import Optional, Annotated
 from app.core.datetime_utils import get_now
 from pydantic import BaseModel, Field
 from pydantic.functional_validators import BeforeValidator
+from app.schemas.crm import ClientCRMData
 
 PyObjectId = Annotated[str, BeforeValidator(str)]
 
 class ClientBase(BaseModel):
     companyName: str
     contactEmail: str
+    phone: Optional[str] = None
+    industry: Optional[str] = None
+    assigned_manager: Optional[str] = None
+    revenue: float = 0.0
+    lifetime_value: float = 0.0
+    address: Optional[str] = None
+    social_links: dict = Field(default_factory=dict)
     status: str = "Active"
+    crm_data: Optional[ClientCRMData] = Field(default_factory=ClientCRMData)
 
 class ClientCreate(ClientBase):
     pass

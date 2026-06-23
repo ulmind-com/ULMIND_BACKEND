@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     CLOUDINARY_API_KEY: str
     CLOUDINARY_API_SECRET: str
 
+    # AI
+    OPENROUTER_API_KEY: str
+
     # Email (Resend HTTP API — works on Render, HTTPS-based)
     RESEND_API_KEY: str = ""           # Get free key at https://resend.com
     MAIL_ADDRESS: str = ""             # Verified sender email (or leave blank to use resend.dev)

@@ -1,4 +1,4 @@
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
 from bson import ObjectId
@@ -12,6 +12,7 @@ bearer_scheme = HTTPBearer()
 
 
 async def get_current_admin(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     db=Depends(get_db),
 ):
@@ -33,7 +34,12 @@ async def get_current_admin(
     if admin_record is None:
         raise credentials_exception
 
-    return AdminInDB(**admin_record)
+    admin = AdminInDB(**admin_record)
+    
+    if request.method == "DELETE" and admin.role.lower() != "super_admin":
+        raise HTTPException(status_code=403, detail="Only Super Admins can perform deletion directly.")
+        
+    return admin
 
 
 async def get_current_active_admin(current_admin: AdminInDB = Depends(get_current_admin)):
@@ -44,4 +50,15 @@ async def get_current_active_admin(current_admin: AdminInDB = Depends(get_curren
 async def get_current_super_admin(current_admin: AdminInDB = Depends(get_current_active_admin)):
     if current_admin.role.lower() != "super_admin":
         raise HTTPException(status_code=403, detail="Super admin privileges required")
+    return current_admin
+
+async def get_current_admin_or_leader(current_admin: AdminInDB = Depends(get_current_active_admin)):
+    allowed = ["super_admin", "admin", "team_leader"]
+    if current_admin.role.lower() not in allowed:
+        raise HTTPException(status_code=403, detail="Admin or Team Leader privileges required")
+    return current_admin
+
+async def require_mutation_rights(current_admin: AdminInDB = Depends(get_current_active_admin)):
+    if current_admin.role.lower() == "viewer":
+        raise HTTPException(status_code=403, detail="Viewers cannot modify data")
     return current_admin

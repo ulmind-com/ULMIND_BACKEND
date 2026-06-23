@@ -10,7 +10,7 @@ from slowapi.errors import RateLimitExceeded
 from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.db.database import connect_to_mongo, close_mongo_connection
-from app.api.endpoints import auth, client, project, team, stats, track, page_analytics, merchandise, user_management, offers, sheets, ai, activity
+from app.api.endpoints import auth, client, project, team, stats, track, page_analytics, merchandise, user_management, offers, sheets, ai, activity, finance, notification, task, crm_enterprise, pm_enterprise, team_enterprise, audit, project_env, delete_requests
 from app.api import websockets
 
 logging.basicConfig(level=logging.INFO)
@@ -72,6 +72,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix=f"{settings.API_V1_STR}/auth", tags=["Auth"])
 app.include_router(client.router, prefix=f"{settings.API_V1_STR}/clients", tags=["Clients"])
 app.include_router(project.router, prefix=f"{settings.API_V1_STR}/projects", tags=["Projects"])
+app.include_router(project_env.router, prefix=f"{settings.API_V1_STR}/projects", tags=["Project Env"])
 app.include_router(team.router, prefix=f"{settings.API_V1_STR}/team", tags=["Team"])
 app.include_router(stats.router, prefix=f"{settings.API_V1_STR}/stats", tags=["Stats"])
 app.include_router(track.router, prefix=f"{settings.API_V1_STR}/track", tags=["Track"])
@@ -83,7 +84,14 @@ app.include_router(sheets.router, prefix=f"{settings.API_V1_STR}/sheets", tags=[
 app.include_router(ai.router, prefix=f"{settings.API_V1_STR}/ai", tags=["AI"])
 app.include_router(activity.router, prefix=f"{settings.API_V1_STR}/activity", tags=["Activity"])
 app.include_router(websockets.router, tags=["WebSockets"])
-
+app.include_router(finance.router, prefix=f"{settings.API_V1_STR}/finance", tags=["Finance"])
+app.include_router(notification.router, prefix=f"{settings.API_V1_STR}/notifications", tags=["Notifications"])
+app.include_router(task.router, prefix=f"{settings.API_V1_STR}/tasks", tags=["Tasks"])
+app.include_router(crm_enterprise.router, prefix=f"{settings.API_V1_STR}/crm", tags=["CRM Enterprise"])
+app.include_router(pm_enterprise.router, prefix=f"{settings.API_V1_STR}/pm", tags=["Project Management"])
+app.include_router(team_enterprise.router, prefix=f"{settings.API_V1_STR}/team-hr", tags=["Team Enterprise"])
+app.include_router(audit.router, prefix=f"{settings.API_V1_STR}/audit", tags=["Audit"])
+app.include_router(delete_requests.router, prefix=f"{settings.API_V1_STR}/delete-requests", tags=["Delete Requests"])
 @app.get("/", tags=["Health"])
 async def health_check():
     return {"status": "success", "message": "Server is healthy"}

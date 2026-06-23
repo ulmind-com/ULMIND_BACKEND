@@ -37,7 +37,7 @@ async def get_all_sessions(current_admin=Depends(get_current_super_admin), db=De
     offline_threshold = now - timedelta(minutes=2)
     await db["admin_activity"].update_many(
         {"is_online": True, "last_heartbeat": {"$lt": offline_threshold}},
-        {"$set": {"is_online": False, "logout_time": offline_threshold}} # Set logout time to when they last pinged
+        [{"$set": {"is_online": False, "logout_time": "$last_heartbeat"}}] 
     )
     
     # Now fetch all sessions
