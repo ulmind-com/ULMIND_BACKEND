@@ -9,6 +9,7 @@ PyObjectId = Annotated[str, BeforeValidator(str)]
 
 class ClientBase(BaseModel):
     companyName: str
+    contactName: Optional[str] = None
     contactEmail: str
     phone: Optional[str] = None
     industry: Optional[str] = None
@@ -25,6 +26,7 @@ class ClientCreate(ClientBase):
 
 class ClientUpdate(BaseModel):
     companyName: Optional[str] = None
+    contactName: Optional[str] = None
     contactEmail: Optional[str] = None
     status: Optional[str] = None
 
