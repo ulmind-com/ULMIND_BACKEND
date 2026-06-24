@@ -43,6 +43,11 @@ async def get_pm_dashboard(db=Depends(get_db), _admin=Depends(get_current_active
     total_spent = expense_agg[0]["total_spent"] if expense_agg else 0
 
     upcoming_milestones = await db["pm_milestones"].find({"status": {"$ne": "Completed"}}).sort("due_date", 1).to_list(5)
+    formatted_milestones = []
+    for m in upcoming_milestones:
+        m["id"] = str(m["_id"])
+        m.pop("_id", None)
+        formatted_milestones.append(m)
 
     return {
         "total_projects": total,
@@ -54,7 +59,7 @@ async def get_pm_dashboard(db=Depends(get_db), _admin=Depends(get_current_active
         "total_hours": total_hours,
         "total_budget": total_budget,
         "total_spent": total_spent,
-        "upcoming_milestones": upcoming_milestones,
+        "upcoming_milestones": formatted_milestones,
     }
 
 # ── TASKS ──
