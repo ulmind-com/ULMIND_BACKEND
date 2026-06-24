@@ -138,7 +138,11 @@ async def logout(
     session = await db["admin_activity"].find_one({"_id": ObjectId(req.session_id), "admin_id": str(current_admin.id)})
     if session:
         now = get_now()
-        duration = (now - session["login_time"]).total_seconds() / 60.0
+        login_time = session["login_time"]
+        if login_time.tzinfo is None:
+            from datetime import timezone
+            login_time = login_time.replace(tzinfo=timezone.utc)
+        duration = (now - login_time).total_seconds() / 60.0
         await db["admin_activity"].update_one(
             {"_id": ObjectId(req.session_id)},
             {"$set": {"logout_time": now, "is_online": False, "duration_minutes": round(duration, 2)}}
