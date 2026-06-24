@@ -17,7 +17,7 @@ SCRAPE_TIMEOUT_MS = 90000
 async def scrape_leads(
     niche: str = Query(..., description="E.g., dentist, plumber, restaurant"),
     location: str = Query(..., description="E.g., Kolkata, New York"),
-    limit: int = Query(35, description="Max leads to fetch"),
+    limit: int = Query(50, description="Max leads to fetch"),
     db=Depends(get_db),
     _admin=Depends(get_current_active_admin)
 ):
