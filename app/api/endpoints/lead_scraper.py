@@ -145,7 +145,9 @@ async def scrape_leads(
             
             # Gather and scrape listings in a single high-performance browser evaluation
             logger.info("Executing high-performance JS scraper in browser context...")
-            leads = await page.evaluate("""(limit, niche) => {
+            leads = await page.evaluate("""(args) => {
+                const limit = args.limit;
+                const niche = args.niche;
                 const results = [];
                 const cards = Array.from(document.querySelectorAll('a[href*="/maps/place/"]'));
                 
@@ -260,7 +262,7 @@ async def scrape_leads(
                     } catch(e) {}
                 }
                 return results;
-            }""", limit, niche)
+            }""", {"limit": limit, "niche": niche})
             logger.info(f"Successfully scraped {len(leads)} leads from browser page.")
             
             await browser.close()
