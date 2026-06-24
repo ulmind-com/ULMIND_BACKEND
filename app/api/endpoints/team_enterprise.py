@@ -62,6 +62,13 @@ async def get_team_dashboard(db=Depends(get_db), _admin=Depends(get_current_acti
 
     # Recent members (new joiners)
     new_joiners = await db["admins"].find({}).sort("created_at", -1).to_list(5)
+    formatted_joiners = []
+    for nj in new_joiners:
+        nj["id"] = str(nj["_id"])
+        nj.pop("_id", None)
+        nj.pop("password", None)
+        nj.pop("hashed_password", None)
+        formatted_joiners.append(nj)
 
     return {
         "total_members": total_members,
@@ -72,7 +79,7 @@ async def get_team_dashboard(db=Depends(get_db), _admin=Depends(get_current_acti
         "avg_performance": round(avg_performance, 1),
         "pending_leaves": pending_leaves,
         "total_hours_logged": total_hours,
-        "new_joiners": new_joiners,
+        "new_joiners": formatted_joiners,
     }
 
 # ── ATTENDANCE ──
