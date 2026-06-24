@@ -97,7 +97,7 @@ async def scrape_leads(
                 pass
 
             scrolled_empty_attempts = 0
-            max_scroll_attempts = 8
+            max_scroll_attempts = 15
             
             # Loop for deep scrolling
             for attempt in range(max_scroll_attempts):
@@ -118,7 +118,7 @@ async def scrape_leads(
                     break
                 
                 # If we have loaded enough place cards to filter, stop early to save memory and time
-                if card_count >= min(limit + 5, 45):
+                if card_count >= min(limit + 15, 80):
                     logger.info("Loaded sufficient business cards. Proceeding to filter.")
                     break
                 
@@ -189,47 +189,58 @@ async def scrape_leads(
                         
                         if (!name) continue;
                         
-                        // Deduplicate by name
-                        if (results.some(r => r.companyName === name)) continue;
-                        
-                        // Extract Maps Link
+                        // Deduplicate by name or link
                         const mapsUrl = card.href;
                         if (!mapsUrl || !mapsUrl.startsWith('http')) continue;
+                        if (results.some(r => r.companyName === name || r.mapsLink === mapsUrl)) continue;
                         
                         // Extract Rating
                         let rating = 0.0;
-                        const ratingEl = parent.querySelector('span.MW4etd, span[aria-label*="stars"]');
+                        const ratingEl = parent.querySelector('span.MW4etd, span[aria-label*="stars"], span[aria-label*="star"]');
                         if (ratingEl) {
-                            const ratingText = ratingEl.innerText;
-                            rating = parseFloat(ratingText.split(/\\s+/)[0].replace(',', '.')) || 0.0;
+                            const ratingText = ratingEl.innerText || ratingEl.getAttribute('aria-label') || '';
+                            const ratingMatch = ratingText.match(/(\\d+(\\.\\d+)?)/);
+                            if (ratingMatch) {
+                                rating = parseFloat(ratingMatch[1].replace(',', '.')) || 0.0;
+                            }
                         }
                         
                         // Extract Info (Address & Phone)
-                        const infoDivs = Array.from(parent.querySelectorAll('div.W4Efsd'));
-                        const infoTexts = infoDivs.map(div => div.innerText.trim()).filter(Boolean);
-                        let address = "Address not listed";
-                        let phone = null;
-                        
-                        const phoneRegex = /(\\+?\\d{1,4}[\\s-]?\\(?\\d{1,3}\\)?[\\s-]?\\d{3,5}[\\s-]?\\d{3,5})/;
-                        
-                        for (const text of infoTexts) {
-                            const phoneMatch = text.match(phoneRegex);
-                            if (phoneMatch && !phone) {
-                                const possiblePhone = phoneMatch[0].trim();
-                                const cleanDigits = possiblePhone.replace(/\\D/g, '');
-                                if (cleanDigits.length >= 7) {
-                                    phone = possiblePhone;
-                                }
-                            }
-                            if (text.includes(',') && text.length > 10 && !text.includes('★') && !text.includes('stars')) {
-                                address = text;
+                        const parts = [];
+                        const infoDivs = parent.querySelectorAll('div.W4Efsd');
+                        for (const div of infoDivs) {
+                            const text = div.innerText;
+                            if (text) {
+                                const splitParts = text.split(/[·•\\n]/).map(p => p.trim()).filter(Boolean);
+                                parts.push(...splitParts);
                             }
                         }
                         
-                        if (address === "Address not listed" && infoTexts.length > 1) {
-                            for (const t of infoTexts) {
-                                if (/\\d/.test(t) && t.length > 8 && !t.includes('★')) {
-                                    address = t;
+                        let address = "Address not listed";
+                        let phone = null;
+                        
+                        // 1. Find phone number
+                        for (const part of parts) {
+                            const cleanDigits = part.replace(/\\D/g, '');
+                            if (cleanDigits.length >= 7 && cleanDigits.length <= 15 && !/[a-zA-Z]/.test(part)) {
+                                phone = part;
+                                break;
+                            }
+                        }
+                        
+                        // 2. Find address
+                        for (const part of parts) {
+                            if (part.includes(',') && part.length > 8 && !/am|pm|open|clos|hour|menu|delivery/i.test(part) && part !== phone) {
+                                address = part;
+                                break;
+                            }
+                        }
+                        
+                        // Fallback for address if still not found
+                        if (address === "Address not listed") {
+                            for (const part of parts) {
+                                if (part.length > 8 && !/am|pm|open|clos|hour|menu|delivery/i.test(part) && !part.includes('★') && part !== phone) {
+                                    address = part;
                                     break;
                                 }
                             }
