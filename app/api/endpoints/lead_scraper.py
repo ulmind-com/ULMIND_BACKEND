@@ -17,7 +17,7 @@ SCRAPE_TIMEOUT_MS = 90000
 async def scrape_leads(
     niche: str = Query(..., description="E.g., dentist, plumber, restaurant"),
     location: str = Query(..., description="E.g., Kolkata, New York"),
-    limit: int = Query(50, description="Max leads to fetch"),
+    limit: int = Query(20, description="Max leads to fetch"),
     db=Depends(get_db),
     _admin=Depends(get_current_active_admin)
 ):
@@ -67,26 +67,29 @@ async def scrape_leads(
             
             logger.info(f"Navigating to Google Maps: {url}")
             await page.goto(url, wait_until="domcontentloaded", timeout=SCRAPE_TIMEOUT_MS)
-            await asyncio.sleep(5)
+            await asyncio.sleep(2)
             
             # Handle Google's cookie consent prompts if they appear
-            if "consent.google.com" in page.url or await page.locator("form[action*='consent'] button").count() > 0:
-                logger.info("Accepting Google consent prompt...")
-                try:
+            try:
+                if "consent.google.com" in page.url or await page.locator("form[action*='consent'] button").count() > 0:
+                    logger.info("Accepting Google consent prompt...")
                     agree_btn = page.locator("form[action*='consent'] button").last
-                    await agree_btn.click(timeout=5000)
-                    await page.wait_for_load_state("networkidle")
-                    await asyncio.sleep(2)
-                except Exception as consent_err:
-                    logger.warning(f"Could not click consent button: {consent_err}")
+                    await agree_btn.click(timeout=3000)
+                    await page.wait_for_load_state("networkidle", timeout=3000)
+            except Exception as consent_err:
+                logger.warning(f"Could not click consent button: {consent_err}")
             
             # Select the left sidebar housing the results
             feed_selector = "div[role='feed']"
             try:
-                await page.wait_for_selector(feed_selector, timeout=20000)
+                await page.wait_for_selector(feed_selector, timeout=12000)
             except Exception:
                 # Fallback to secondary selector if role feed isn't directly on container
                 feed_selector = "div.m67rPy"
+                try:
+                    await page.wait_for_selector(feed_selector, timeout=3000)
+                except Exception:
+                    pass
             
             logger.info(f"Sidebar locator identified: '{feed_selector}'")
             
@@ -103,7 +106,43 @@ async def scrape_leads(
             for attempt in range(max_scroll_attempts):
                 # Count the current number of place cards loaded
                 card_count = await page.locator('a[href*="/maps/place/"]').count()
-                logger.info(f"Scroll iteration {attempt + 1}: Found {card_count} potential place links.")
+                
+                # Check how many of these leads actually do NOT have websites dynamically
+                matching_count = await page.evaluate("""() => {
+                    const cards = Array.from(document.querySelectorAll('a[href*="/maps/place/"]'));
+                    let count = 0;
+                    for (const card of cards) {
+                        try {
+                            const parent = card.closest('div[role="article"]') || card.closest('div.Nv2yGc') || card.closest('div.UaQ7dd') || card.parentElement;
+                            if (!parent) continue;
+                            
+                            let hasWebsite = false;
+                            const websiteEl = parent.querySelector('a[data-item-id="authority"], a[aria-label*="Website"], a[aria-label*="website"]');
+                            if (websiteEl) {
+                                hasWebsite = true;
+                            } else {
+                                const anchors = Array.from(parent.querySelectorAll('a'));
+                                for (const anchor of anchors) {
+                                    if (!anchor.href) continue;
+                                    const url = new URL(anchor.href);
+                                    const isGoogle = url.hostname.includes('google') || url.hostname.includes('gstatic') || url.protocol === 'javascript:';
+                                    if (!isGoogle) {
+                                        hasWebsite = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (!hasWebsite) count++;
+                        } catch(e) {}
+                    }
+                    return count;
+                }""")
+                
+                logger.info(f"Scroll iteration {attempt + 1}: Found {card_count} potential place links ({matching_count} matching prospects).")
+                
+                if matching_count >= limit:
+                    logger.info(f"Loaded sufficient matching prospects ({matching_count} >= {limit}). Stopping scroll.")
+                    break
                 
                 # Check for "You've reached the end of the list"
                 end_locator = page.locator("text='You\'ve reached the end of the list'")
@@ -115,11 +154,6 @@ async def scrape_leads(
                 page_text = await page.evaluate("() => document.body.innerText")
                 if "reached the end of the list" in page_text or "You've reached the end" in page_text:
                     logger.info("Detected end of list text. Stopping scroll.")
-                    break
-                
-                # If we have loaded enough place cards to filter, stop early to save memory and time
-                if card_count >= min(limit + 15, 80):
-                    logger.info("Loaded sufficient business cards. Proceeding to filter.")
                     break
                 
                 # Execute scroll down
