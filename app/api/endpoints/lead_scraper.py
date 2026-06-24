@@ -97,7 +97,7 @@ async def scrape_leads(
                 pass
 
             scrolled_empty_attempts = 0
-            max_scroll_attempts = 15
+            max_scroll_attempts = 8
             
             # Loop for deep scrolling
             for attempt in range(max_scroll_attempts):
@@ -118,7 +118,7 @@ async def scrape_leads(
                     break
                 
                 # If we have loaded enough place cards to filter, stop early to save memory and time
-                if card_count >= min(limit + 5, 55):
+                if card_count >= min(limit + 5, 45):
                     logger.info("Loaded sufficient business cards. Proceeding to filter.")
                     break
                 
@@ -126,7 +126,7 @@ async def scrape_leads(
                 prev_height = await page.evaluate(f'document.querySelector("{feed_selector}") ? document.querySelector("{feed_selector}").scrollHeight : 0')
                 await page.evaluate(f'if(document.querySelector("{feed_selector}")) document.querySelector("{feed_selector}").scrollTop = document.querySelector("{feed_selector}").scrollHeight')
                 
-                await asyncio.sleep(1.5)
+                await asyncio.sleep(1.2)
                 
                 new_height = await page.evaluate(f'document.querySelector("{feed_selector}") ? document.querySelector("{feed_selector}").scrollHeight : 0')
                 
@@ -143,126 +143,114 @@ async def scrape_leads(
                 else:
                     scrolled_empty_attempts = 0
             
-            # Gather all links pointing to individual places
-            cards = await page.query_selector_all('a[href*="/maps/place/"]')
-            logger.info(f"Scraping detailed information from {len(cards)} listings...")
-            
-            for index, card in enumerate(cards):
-                if len(leads) >= limit:
-                    break
+            # Gather and scrape listings in a single high-performance browser evaluation
+            logger.info("Executing high-performance JS scraper in browser context...")
+            leads = await page.evaluate("""(limit, niche) => {
+                const results = [];
+                const cards = Array.from(document.querySelectorAll('a[href*="/maps/place/"]'));
                 
-                try:
-                    # Get parent container (a listing is always contained in an article/card container)
-                    parent = await card.evaluate_handle("el => el.closest('div[role=\"article\"]') || el.closest('div.Nv2yGc') || el.closest('div.UaQ7dd') || el.parentElement")
-                    if not parent:
-                        continue
+                for (const card of cards) {
+                    if (results.length >= limit) break;
                     
-                    # Filter out listings that have a website
-                    has_website = False
-                    
-                    # 1. Check for standard website elements (authority links or website label buttons)
-                    website_el = await parent.query_selector('a[data-item-id="authority"], a[aria-label*="Website"], a[aria-label*="website"]')
-                    if website_el:
-                        has_website = True
-                    
-                    # 2. Look for any external anchor tags to detect website links
-                    if not has_website:
-                        anchors = await parent.query_selector_all('a')
-                        for anchor in anchors:
-                            is_google_or_internal = await anchor.evaluate("""el => {
+                    try {
+                        const parent = card.closest('div[role="article"]') || card.closest('div.Nv2yGc') || card.closest('div.UaQ7dd') || card.parentElement;
+                        if (!parent) continue;
+                        
+                        // Check if it has a website
+                        let hasWebsite = false;
+                        const websiteEl = parent.querySelector('a[data-item-id="authority"], a[aria-label*="Website"], a[aria-label*="website"]');
+                        if (websiteEl) {
+                            hasWebsite = true;
+                        } else {
+                            const anchors = Array.from(parent.querySelectorAll('a'));
+                            for (const anchor of anchors) {
+                                if (!anchor.href) continue;
                                 try {
-                                    if (!el.href) return true;
-                                    const url = new URL(el.href);
-                                    return url.hostname.includes('google') || url.hostname.includes('gstatic') || url.protocol === 'javascript:';
-                                } catch(e) {
-                                    return true;
+                                    const url = new URL(anchor.href);
+                                    const isGoogle = url.hostname.includes('google') || url.hostname.includes('gstatic') || url.protocol === 'javascript:';
+                                    if (!isGoogle) {
+                                        hasWebsite = true;
+                                        break;
+                                    }
+                                } catch(e) {}
+                            }
+                        }
+                        
+                        if (hasWebsite) continue;
+                        
+                        // Extract Name
+                        let name = "";
+                        const nameEl = card.querySelector('div.qBF1Pd, div.fontHeadlineSmall');
+                        if (nameEl) {
+                            name = nameEl.innerText.trim();
+                        } else {
+                            name = (card.getAttribute('aria-label') || '').trim();
+                        }
+                        
+                        if (!name) continue;
+                        
+                        // Deduplicate by name
+                        if (results.some(r => r.companyName === name)) continue;
+                        
+                        // Extract Maps Link
+                        const mapsUrl = card.href;
+                        if (!mapsUrl || !mapsUrl.startsWith('http')) continue;
+                        
+                        // Extract Rating
+                        let rating = 0.0;
+                        const ratingEl = parent.querySelector('span.MW4etd, span[aria-label*="stars"]');
+                        if (ratingEl) {
+                            const ratingText = ratingEl.innerText;
+                            rating = parseFloat(ratingText.split(/\\s+/)[0].replace(',', '.')) || 0.0;
+                        }
+                        
+                        // Extract Info (Address & Phone)
+                        const infoDivs = Array.from(parent.querySelectorAll('div.W4Efsd'));
+                        const infoTexts = infoDivs.map(div => div.innerText.trim()).filter(Boolean);
+                        let address = "Address not listed";
+                        let phone = null;
+                        
+                        const phoneRegex = /(\\+?\\d{1,4}[\\s-]?\\(?\\d{1,3}\\)?[\\s-]?\\d{3,5}[\\s-]?\\d{3,5})/;
+                        
+                        for (const text of infoTexts) {
+                            const phoneMatch = text.match(phoneRegex);
+                            if (phoneMatch && !phone) {
+                                const possiblePhone = phoneMatch[0].trim();
+                                const cleanDigits = possiblePhone.replace(/\\D/g, '');
+                                if (cleanDigits.length >= 7) {
+                                    phone = possiblePhone;
                                 }
-                            }""")
-                            if not is_google_or_internal:
-                                has_website = True
-                                break
-                            
-                    if has_website:
-                        continue  # Discard if website exists
-                    
-                    # 2. Extract Business Name
-                    name = ""
-                    name_el = await card.query_selector('div.qBF1Pd, div.fontHeadlineSmall')
-                    if name_el:
-                        name = await name_el.inner_text()
-                    else:
-                        name = await card.evaluate("el => el.getAttribute('aria-label') || ''")
-                    
-                    name = name.strip()
-                    if not name:
-                        continue
+                            }
+                            if (text.includes(',') && text.length > 10 && !text.includes('★') && !text.includes('stars')) {
+                                address = text;
+                            }
+                        }
                         
-                    # Deduplicate name
-                    if any(l["companyName"] == name for l in leads):
-                        continue
-                    
-                    # 3. Extract Real maps URL from the specific card anchor
-                    maps_url = await card.evaluate("el => el.href")
-                    if not maps_url or not maps_url.startswith("http"):
-                        continue
-                    
-                    # 4. Extract Rating
-                    rating = 0.0
-                    rating_el = await parent.query_selector('span.MW4etd, span[aria-label*="stars"]')
-                    if rating_el:
-                        rating_text = await rating_el.inner_text()
-                        try:
-                            rating = float(rating_text.split()[0].replace(',', '.'))
-                        except:
-                            aria_label = await rating_el.evaluate("el => el.getAttribute('aria-label') || ''")
-                            rating_match = re.search(r'(\d+(\.\d+)?)', aria_label)
-                            if rating_match:
-                                rating = float(rating_match.group(1))
-                    
-                    # 5. Extract Address & Phone Number
-                    address = "Address not listed"
-                    phone = None
-                    
-                    info_divs = await parent.query_selector_all('div.W4Efsd')
-                    info_texts = []
-                    for div in info_divs:
-                        text = await div.inner_text()
-                        if text:
-                            info_texts.append(text.strip())
-                            
-                    for text in info_texts:
-                        # Extract telephone pattern
-                        phone_match = re.search(r'(\+?\d{1,4}[\s-]?\(?\d{1,3}\)?[\s-]?\d{3,5}[\s-]?\d{3,5})', text)
-                        if phone_match and not phone:
-                            possible_phone = phone_match.group(0).strip()
-                            if len(re.sub(r'\D', '', possible_phone)) >= 7:
-                                phone = possible_phone
+                        if (address === "Address not listed" && infoTexts.length > 1) {
+                            for (const t of infoTexts) {
+                                if (/\\d/.test(t) && t.length > 8 && !t.includes('★')) {
+                                    address = t;
+                                    break;
+                                }
+                            }
+                        }
                         
-                        # Extract address (usually has commas and doesn't contain stars)
-                        if "," in text and len(text) > 10 and "★" not in text and "stars" not in text:
-                            address = text.strip()
-                            
-                    # Fallback address parser from items
-                    if address == "Address not listed" and len(info_texts) > 1:
-                        for t in info_texts:
-                            if any(char.isdigit() for char in t) and len(t) > 8 and "★" not in t:
-                                address = t.strip()
-                                break
-                    
-                    leads.append({
-                        "companyName": name,
-                        "phone": phone,
-                        "address": address,
-                        "rating": rating,
-                        "mapsLink": maps_url,
-                        "maps_url": maps_url,
-                        "industry": niche.capitalize(),
-                        "contactEmail": "info@pending-website.com",
-                        "status": "Lead"
-                    })
-                    
-                except Exception as card_err:
-                    logger.error(f"Error parsing listing item: {card_err}")
+                        results.push({
+                            "companyName": name,
+                            "phone": phone,
+                            "address": address,
+                            "rating": rating,
+                            "mapsLink": mapsUrl,
+                            "maps_url": mapsUrl,
+                            "industry": niche.charAt(0).toUpperCase() + niche.slice(1),
+                            "contactEmail": "info@pending-website.com",
+                            "status": "Lead"
+                        });
+                    } catch(e) {}
+                }
+                return results;
+            }""", limit, niche)
+            logger.info(f"Successfully scraped {len(leads)} leads from browser page.")
             
             await browser.close()
             
