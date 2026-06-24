@@ -43,7 +43,12 @@ async def scrape_leads(
                         "--disable-dev-shm-usage",
                         "--no-sandbox",
                         "--disable-setuid-sandbox",
-                        "--window-size=1280,800"
+                        "--single-process",
+                        "--no-zygote",
+                        "--no-first-run",
+                        "--disable-renderer-backgrounding",
+                        "--disable-background-timer-throttling",
+                        "--js-flags=--max-old-space-size=128"
                     ]
                 )
             except Exception as launch_err:
@@ -92,7 +97,7 @@ async def scrape_leads(
                 pass
 
             scrolled_empty_attempts = 0
-            max_scroll_attempts = 50
+            max_scroll_attempts = 15
             
             # Loop for deep scrolling
             for attempt in range(max_scroll_attempts):
@@ -112,16 +117,16 @@ async def scrape_leads(
                     logger.info("Detected end of list text. Stopping scroll.")
                     break
                 
-                # If we have loaded a high volume of cards (e.g. 80+ cards), we likely have enough website-less candidates
-                if card_count >= 80:
-                    logger.info("Loaded high volume of business cards. Proceeding to filter.")
+                # If we have loaded enough place cards to filter, stop early to save memory and time
+                if card_count >= min(limit + 5, 55):
+                    logger.info("Loaded sufficient business cards. Proceeding to filter.")
                     break
                 
                 # Execute scroll down
                 prev_height = await page.evaluate(f'document.querySelector("{feed_selector}") ? document.querySelector("{feed_selector}").scrollHeight : 0')
                 await page.evaluate(f'if(document.querySelector("{feed_selector}")) document.querySelector("{feed_selector}").scrollTop = document.querySelector("{feed_selector}").scrollHeight')
                 
-                await asyncio.sleep(2.0)
+                await asyncio.sleep(1.5)
                 
                 new_height = await page.evaluate(f'document.querySelector("{feed_selector}") ? document.querySelector("{feed_selector}").scrollHeight : 0')
                 
@@ -132,8 +137,8 @@ async def scrape_leads(
                         await page.keyboard.press("PageDown")
                     except:
                         pass
-                    if scrolled_empty_attempts >= 5:
-                        logger.info("Scroll height unchanged for 5 attempts. Stopping.")
+                    if scrolled_empty_attempts >= 3:
+                        logger.info("Scroll height unchanged for 3 attempts. Stopping.")
                         break
                 else:
                     scrolled_empty_attempts = 0
@@ -147,24 +152,35 @@ async def scrape_leads(
                     break
                 
                 try:
-                    # Get parent container
-                    parent = await card.evaluate_handle("el => el.closest('div.Nv2yGc') || el.closest('div.UaQ7dd') || el.parentElement")
+                    # Get parent container (a listing is always contained in an article/card container)
+                    parent = await card.evaluate_handle("el => el.closest('div[role=\"article\"]') || el.closest('div.Nv2yGc') || el.closest('div.UaQ7dd') || el.parentElement")
                     if not parent:
                         continue
                     
-                    # 1. Filter out listings that have a website
+                    # Filter out listings that have a website
                     has_website = False
                     
-                    # Check for authority links or website label buttons
+                    # 1. Check for standard website elements (authority links or website label buttons)
                     website_el = await parent.query_selector('a[data-item-id="authority"], a[aria-label*="Website"], a[aria-label*="website"]')
                     if website_el:
                         has_website = True
                     
-                    # Check for text indicators
+                    # 2. Look for any external anchor tags to detect website links
                     if not has_website:
-                        website_text = await parent.query_selector('text="Website", text="website"')
-                        if website_text:
-                            has_website = True
+                        anchors = await parent.query_selector_all('a')
+                        for anchor in anchors:
+                            is_google_or_internal = await anchor.evaluate("""el => {
+                                try {
+                                    if (!el.href) return true;
+                                    const url = new URL(el.href);
+                                    return url.hostname.includes('google') || url.hostname.includes('gstatic') || url.protocol === 'javascript:';
+                                } catch(e) {
+                                    return true;
+                                }
+                            }""")
+                            if not is_google_or_internal:
+                                has_website = True
+                                break
                             
                     if has_website:
                         continue  # Discard if website exists
