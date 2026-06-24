@@ -10,7 +10,7 @@ from slowapi.errors import RateLimitExceeded
 from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.db.database import connect_to_mongo, close_mongo_connection
-from app.api.endpoints import auth, client, project, team, stats, track, page_analytics, merchandise, user_management, offers, sheets, ai, activity, finance, notification, task, crm_enterprise, pm_enterprise, team_enterprise, audit, project_env, delete_requests
+from app.api.endpoints import auth, client, project, team, stats, track, page_analytics, merchandise, user_management, offers, sheets, ai, activity, finance, notification, task, crm_enterprise, pm_enterprise, team_enterprise, audit, project_env, delete_requests, lead_scraper
 from app.api import websockets
 
 logging.basicConfig(level=logging.INFO)
@@ -88,6 +88,7 @@ app.include_router(finance.router, prefix=f"{settings.API_V1_STR}/finance", tags
 app.include_router(notification.router, prefix=f"{settings.API_V1_STR}/notifications", tags=["Notifications"])
 app.include_router(task.router, prefix=f"{settings.API_V1_STR}/tasks", tags=["Tasks"])
 app.include_router(crm_enterprise.router, prefix=f"{settings.API_V1_STR}/crm", tags=["CRM Enterprise"])
+app.include_router(lead_scraper.router, prefix=f"{settings.API_V1_STR}/lead-scraper", tags=["Lead Scraper"])
 app.include_router(pm_enterprise.router, prefix=f"{settings.API_V1_STR}/pm", tags=["Project Management"])
 app.include_router(team_enterprise.router, prefix=f"{settings.API_V1_STR}/team-hr", tags=["Team Enterprise"])
 app.include_router(audit.router, prefix=f"{settings.API_V1_STR}/audit", tags=["Audit"])

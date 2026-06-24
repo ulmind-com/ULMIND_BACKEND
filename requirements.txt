@@ -164,3 +164,8 @@ watchfiles==1.1.1
     # via uvicorn
 websockets==16.0
     # via uvicorn
+cryptography>=42.0.0
+    # via ulmind-tracking-backend (pyproject.toml)
+playwright>=1.40.0
+    # via ulmind-tracking-backend (pyproject.toml)
+
