@@ -38,14 +38,26 @@ async def list_public_team(db=Depends(get_db)):
 #  TEAM MANAGEMENT (Admin Only)
 # ══════════════════════════════════════════════════════════════════════════════
 
-@router.get("/", response_model=List[AdminResponse])
+@router.get("/")
 async def list_team_members(
     db=Depends(get_db),
     _admin=Depends(get_current_active_admin)
 ):
     """List all team members (Admins/Editors)."""
     team = await db["admins"].find({}).to_list(length=1000)
-    return team
+    # Normalize for frontend
+    result = []
+    for member in team:
+        member["_id"] = str(member["_id"])
+        # Ensure required fields have defaults
+        member.setdefault("role", "admin")
+        member.setdefault("status", "Active")
+        member.setdefault("must_change_password", False)
+        member.setdefault("specialization", [])
+        member.setdefault("employee_id", None)
+        member.setdefault("position", None)
+        result.append(member)
+    return result
 
 
 class CreateTeamMemberReq(BaseModel):

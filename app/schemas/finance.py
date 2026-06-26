@@ -43,6 +43,7 @@ class ExpenseCreate(BaseModel):
     description: str
     date: datetime
     receipt_url: Optional[str] = None
+    project_id: Optional[str] = None  # Link expense to a project for budget tracking
 
 class ExpenseInDB(ExpenseCreate):
     id: str = Field(alias="_id")

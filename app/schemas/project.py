@@ -65,27 +65,56 @@ class EnvVarInDB(EnvVarBase):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
 
 
+# ── Sub-model: Milestone ─────────────────────────────────────────────────────
+
+class MilestoneItem(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    title: str
+    description: Optional[str] = None
+    due_date: Optional[datetime] = None
+    status: str = "Pending"  # Pending, In Progress, Completed, Delayed
+    completion_pct: float = 0
+
+
 # ── Main Project Model ────────────────────────────────────────────────────────
 
 class ProjectBase(BaseModel):
     name: str = Field(..., description="Project name")
+    project_id: Optional[str] = Field(default=None, description="Auto-generated PROJ-UL-XXX")
+    description: Optional[str] = Field(default=None, description="Project description")
+    category: str = Field(default="Web Development", description="e.g. 'Web Development', 'Mobile App', 'AI/ML', 'DevOps', 'Design', 'Marketing'")
     status: str = Field(
         default="Planning",
-        description="'Planning' | 'Active' | 'On Hold' | 'Completed'"
+        description="'Planning' | 'Active' | 'On Hold' | 'Completed' | 'Cancelled'"
     )
+    priority: str = Field(default="Medium", description="'Low' | 'Medium' | 'High' | 'Urgent'")
     notes: Optional[str] = Field(default=None, description="General project notes")
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
+    tags: List[str] = Field(default_factory=list, description="Project tags for filtering")
 
     # Client Info
-    client_name: str = Field(..., description="Client's full name")
-    client_email: EmailStr = Field(..., description="Client's email address")
+    client_name: str = Field(default="Unknown", description="Client's full name")
+    client_email: Optional[EmailStr] = None
     client_phone: Optional[str] = None
     client_company: Optional[str] = None
+    client_id: Optional[str] = Field(default=None, description="CRM Client ID reference")
+
+    # Team
+    team_members: List[str] = Field(default_factory=list, description="List of employee IDs assigned to this project")
+    project_manager: Optional[str] = Field(default=None, description="Employee ID of the project manager")
+
+    # Progress
+    progress: float = Field(default=0, ge=0, le=100, description="Auto-calculated from task completion")
+    completion_percent: float = Field(default=0, ge=0, le=100, description="Overall completion percentage")
+
+    # Milestones (embedded)
+    milestones: List[MilestoneItem] = Field(default_factory=list, description="Project milestones")
 
     # Financials
-    cost: float = Field(..., ge=0, description="Total project cost")
-    currency: str = Field(default="INR", description="Currency code, e.g. 'INR', 'USD'")
+    budget: float = Field(default=0, ge=0, description="Total project budget (INR)")
+    cost: float = Field(default=0, ge=0, description="Total project cost")
+    currency: str = Field(default="INR", description="Currency code, e.g. 'INR'")
     payment_status: str = Field(
         default="Pending",
         description="'Pending' | 'Partial' | 'Paid'"
@@ -99,14 +128,25 @@ class ProjectCreate(ProjectBase):
 
 class ProjectUpdate(BaseModel):
     name: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
     status: Optional[str] = None
+    priority: Optional[str] = None
     notes: Optional[str] = None
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
+    tags: Optional[List[str]] = None
     client_name: Optional[str] = None
     client_email: Optional[EmailStr] = None
     client_phone: Optional[str] = None
     client_company: Optional[str] = None
+    client_id: Optional[str] = None
+    team_members: Optional[List[str]] = None
+    project_manager: Optional[str] = None
+    progress: Optional[float] = Field(default=None, ge=0, le=100)
+    completion_percent: Optional[float] = Field(default=None, ge=0, le=100)
+    milestones: Optional[List[MilestoneItem]] = None
+    budget: Optional[float] = Field(default=None, ge=0)
     cost: Optional[float] = Field(default=None, ge=0)
     currency: Optional[str] = None
     payment_status: Optional[str] = None
@@ -116,8 +156,8 @@ class ProjectResponse(ProjectBase):
     id: PyObjectId = Field(alias="_id")
     deployments: List[DeploymentInDB] = []
     env_vars: List[EnvVarInDB] = []
-    created_at: datetime = Field(alias="createdAt", default_factory=get_now)
-    updated_at: datetime = Field(alias="updatedAt", default_factory=get_now)
+    created_at: datetime = Field(default_factory=get_now)
+    updated_at: datetime = Field(default_factory=get_now)
 
     model_config = {"populate_by_name": True}
 
@@ -125,14 +165,27 @@ class ProjectResponse(ProjectBase):
 class ProjectSummaryResponse(BaseModel):
     """Lightweight response for list view — omits env_vars and deployments."""
     id: PyObjectId = Field(alias="_id")
+    project_id: Optional[str] = None
     name: str
-    status: str
-    client_name: str
-    client_email: str
-    cost: float
-    currency: str
-    payment_status: str
-    created_at: datetime = Field(alias="createdAt", default_factory=get_now)
-    updated_at: datetime = Field(alias="updatedAt", default_factory=get_now)
+    description: Optional[str] = None
+    category: str = "Web Development"
+    status: str = "Planning"
+    priority: str = "Medium"
+    tags: List[str] = []
+    client_name: Optional[str] = "Unknown"
+    client_email: Optional[str] = None
+    client_id: Optional[str] = None
+    team_members: List[str] = []
+    project_manager: Optional[str] = None
+    progress: float = 0
+    completion_percent: float = 0
+    budget: float = 0
+    cost: float = 0
+    currency: str = "INR"
+    payment_status: str = "Pending"
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=get_now)
+    updated_at: datetime = Field(default_factory=get_now)
 
     model_config = {"populate_by_name": True}

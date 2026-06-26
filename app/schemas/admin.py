@@ -16,6 +16,7 @@ class AdminBase(BaseModel):
     role: str = "admin"
     status: str = "Active"
     profile_photo: Optional[ImageInfo] = None
+    employee_id: Optional[str] = Field(None, description="Enterprise Employee ID, e.g. FOU-UL-001")
     
     # New Bio & Position Fields
     position: Optional[str] = Field(None, description="e.g. CEO, CTO, Developer")
@@ -38,6 +39,7 @@ class AdminUpdate(BaseModel):
     role: Optional[str] = None
     status: Optional[str] = None
     must_change_password: Optional[bool] = None
+    employee_id: Optional[str] = None
     
     # Professional fields
     position: Optional[str] = None
@@ -61,9 +63,9 @@ class AdminInDB(AdminBase):
 
 class AdminResponse(AdminBase):
     id: PyObjectId = Field(alias="_id")
-    must_change_password: bool
-    created_at: datetime = Field(alias="createdAt")
-    updated_at: datetime = Field(alias="updatedAt")
+    must_change_password: bool = False
+    created_at: Optional[datetime] = Field(None, alias="createdAt")
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
 
     model_config = ConfigDict(populate_by_name=True)
 

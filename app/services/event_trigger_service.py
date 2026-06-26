@@ -31,7 +31,7 @@ async def trigger_system_event(
     audit_doc = {
         "action": event_type,
         "admin_email": user_email,
-        "details": f"{user_email} triggered {event_type} on {resource_type}",
+        "details": f"{user_email} triggered {event_type} on {resource_type} (ID: {resource_id})",
         "timestamp": now
     }
     await db["audit"].insert_one(audit_doc)
@@ -46,6 +46,44 @@ async def trigger_system_event(
         "timestamp": now
     }
     await db["activity_logs"].insert_one(activity_doc)
+
+    # 1.5 Create Timeline and Work Log Records if it's a TASK event
+    if "TASK" in event_type:
+        project_id = data.get("project_id") or data.get("task_in", {}).get("project_id")
+        assigned_to = data.get("assigned_to") or data.get("task_in", {}).get("assigned_to")
+        
+        if assigned_to:
+            timeline_doc = {
+                "user_id": assigned_to,
+                "event_type": event_type,
+                "description": f"Task {event_type.split('_')[-1].lower()} in project.",
+                "resource_id": resource_id,
+                "timestamp": now
+            }
+            await db["employee_timeline"].insert_one(timeline_doc)
+            
+            # Create a zero-hour work log just to log the assignment activity
+            if event_type == "TASK_CREATED":
+                work_log = {
+                    "user_id": assigned_to,
+                    "project_id": project_id,
+                    "task_id": resource_id,
+                    "hours": 0.0,
+                    "description": "Task initially assigned",
+                    "date": now,
+                    "timestamp": now
+                }
+                await db["work_logs"].insert_one(work_log)
+                
+        if project_id:
+            proj_timeline = {
+                "project_id": project_id,
+                "event_type": event_type,
+                "description": f"Task event: {event_type}",
+                "resource_id": resource_id,
+                "timestamp": now
+            }
+            await db["project_timeline"].insert_one(proj_timeline)
     
     # 2. Create Notification
     notif_doc = {
