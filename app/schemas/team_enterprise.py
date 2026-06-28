@@ -1,7 +1,10 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Annotated
 from datetime import datetime
 from app.core.datetime_utils import get_now
+from pydantic.functional_validators import BeforeValidator
+
+PyObjectId = Annotated[str, BeforeValidator(str)]
 
 # ── Attendance ──
 class TeamAttendanceBase(BaseModel):
@@ -16,7 +19,7 @@ class TeamAttendanceCreate(TeamAttendanceBase):
     pass
 
 class TeamAttendanceInDB(TeamAttendanceBase):
-    id: str = Field(alias="_id")
+    id: PyObjectId = Field(alias="_id")
     created_at: datetime
     updated_at: datetime
 
@@ -33,7 +36,7 @@ class TeamWorkLogCreate(TeamWorkLogBase):
     pass
 
 class TeamWorkLogInDB(TeamWorkLogBase):
-    id: str = Field(alias="_id")
+    id: PyObjectId = Field(alias="_id")
     created_at: datetime
 
 # ── Performance ──
@@ -54,7 +57,7 @@ class TeamPerformanceCreate(TeamPerformanceBase):
     pass
 
 class TeamPerformanceInDB(TeamPerformanceBase):
-    id: str = Field(alias="_id")
+    id: PyObjectId = Field(alias="_id")
     created_at: datetime
     updated_at: datetime
 
@@ -71,7 +74,7 @@ class TeamLeaveCreate(TeamLeaveBase):
     pass
 
 class TeamLeaveInDB(TeamLeaveBase):
-    id: str = Field(alias="_id")
+    id: PyObjectId = Field(alias="_id")
     approved_by: Optional[str] = None
     created_at: datetime
     updated_at: datetime
@@ -91,6 +94,6 @@ class TeamPayrollCreate(TeamPayrollBase):
     pass
 
 class TeamPayrollInDB(TeamPayrollBase):
-    id: str = Field(alias="_id")
+    id: PyObjectId = Field(alias="_id")
     created_at: datetime
     updated_at: datetime

@@ -1,6 +1,10 @@
 from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime
+from typing import Optional, Annotated
+from pydantic.functional_validators import BeforeValidator
+
+PyObjectId = Annotated[str, BeforeValidator(str)]
 
 class NotificationCreate(BaseModel):
     user_id: str
@@ -14,5 +18,7 @@ class NotificationCreate(BaseModel):
     recommended_action: Optional[str] = None
 
 class NotificationInDB(NotificationCreate):
-    id: str = Field(alias="_id")
+    id: PyObjectId = Field(alias="_id")
     created_at: datetime
+    
+    model_config = {"populate_by_name": True}

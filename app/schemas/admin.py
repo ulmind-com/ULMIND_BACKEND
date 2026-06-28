@@ -17,6 +17,7 @@ class AdminBase(BaseModel):
     status: str = "Active"
     profile_photo: Optional[ImageInfo] = None
     employee_id: Optional[str] = Field(None, description="Enterprise Employee ID, e.g. FOU-UL-001")
+    phone: Optional[str] = Field(None, description="Phone number for SMS/WhatsApp notifications")
     
     # New Bio & Position Fields
     position: Optional[str] = Field(None, description="e.g. CEO, CTO, Developer")

@@ -18,13 +18,23 @@ class Settings(BaseSettings):
     # AI
     OPENROUTER_API_KEY: str = ""
 
-    # Email (Resend HTTP API — works on Render, HTTPS-based)
-    RESEND_API_KEY: str = ""           # Get free key at https://resend.com
-    MAIL_ADDRESS: str = ""             # Verified sender email (or leave blank to use resend.dev)
+    # Email (Resend HTTP API)
+    RESEND_API_KEY: str = ""               # For @ulmind.com
+    RESEND_API_KEY_ULMIND_IN: str = ""     # For @ulmind.in
+    MAIL_ADDRESS: str = ""                 # Sender for ulmind.com
+    MAIL_ADDRESS_ULMIND_IN: str = ""       # Sender for ulmind.in
+    ZOHO_SMTP_PASS: str = ""
     MAIL_FROM_NAME: str = "ULMiND Team"
+    
+    # Twilio
+    TWILIO_ACCOUNT_SID: str = ""
+    TWILIO_AUTH_TOKEN: str = ""
+    TWILIO_FROM_NUMBER: str = ""
 
     class Config:
         env_file = ".env"
         extra = "ignore"               # Silently skip unknown env vars (e.g. old MAIL_PASSWORD)
 
 settings = Settings()
+
+# Hot reload trigger 2

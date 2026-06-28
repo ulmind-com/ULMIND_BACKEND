@@ -5,12 +5,17 @@ from app.core.datetime_utils import get_now
 
 # ── PM Tasks ──
 class PMTaskBase(BaseModel):
-    project_id: str
+    task_id: Optional[str] = None
+    project_id: Optional[str] = None
+    project_name: Optional[str] = None
     title: str
     description: Optional[str] = None
     status: str = "Backlog"  # Backlog, Pending, In Progress, Review, Testing, Completed, Archived
     priority: str = "Medium"  # Low, Medium, High, Critical
     assignee_id: Optional[str] = None
+    assigned_to: Optional[str] = None
+    assigned_to_multiple: List[str] = []
+    assigned_to_names: List[str] = []
     reporter_id: Optional[str] = None
     due_date: Optional[datetime] = None
     estimated_hours: float = 0
@@ -20,6 +25,7 @@ class PMTaskBase(BaseModel):
     dependencies: List[str] = []
     checklist: List[dict] = []  # [{"text": "...", "done": false}]
     attachments: List[str] = []
+    completion_percent: int = 0
     order: int = 0
 
 class PMTaskCreate(PMTaskBase):

@@ -6,6 +6,7 @@ from app.db.database import get_db
 from app.api.deps import get_current_active_admin
 from app.schemas.task import TaskCreate, TaskUpdate, TaskInDB
 from app.services.email_service import send_task_assignment_email
+from app.services.twilio_service import send_task_sms_and_whatsapp
 from app.services.event_trigger_service import fire_event_background
 import logging
 import asyncio
@@ -77,7 +78,7 @@ async def _auto_notify_assignees(db, task: dict, admin_email: str, admin_name: s
     for assignee_id in assignee_ids:
         try:
             assignee = await db["admins"].find_one({"_id": ObjectId(assignee_id)})
-            if not assignee:
+            if not assignee or not assignee.get("email"):
                 continue
 
             project_name = task.get("project_name", "Unknown Project")
@@ -96,17 +97,46 @@ async def _auto_notify_assignees(db, task: dict, admin_email: str, admin_name: s
                 except Exception:
                     due_date = str(task["due_date"])
 
-            await send_task_assignment_email(
-                recipient=assignee["email"],
-                assignee_name=assignee.get("full_name", "Team Member"),
-                task_title=task.get("title", "Untitled Task"),
-                task_description=task.get("description", "No description provided."),
-                project_name=project_name,
-                priority=task.get("priority", "Medium"),
-                due_date=due_date,
-                assigned_by=admin_name,
-            )
-            logger.info(f"Task notification sent to {assignee['email']}")
+            due_countdown = ""
+            if task.get("due_date"):
+                from datetime import datetime
+                try:
+                    due = task["due_date"]
+                    if isinstance(due, str):
+                        due = datetime.fromisoformat(due.replace('Z', '+00:00'))
+                    delta = due.date() - datetime.now().date()
+                    if delta.days == 0:
+                        due_countdown = "Today"
+                    elif delta.days == 1:
+                        due_countdown = "Tomorrow"
+                    elif delta.days > 1:
+                        due_countdown = f"{delta.days} days left"
+                    elif delta.days < 0:
+                        due_countdown = f"Overdue by {abs(delta.days)} days"
+                except Exception:
+                    pass
+
+            try:
+                await send_task_assignment_email(
+                    recipient=assignee["email"],
+                    assignee_name=assignee.get("full_name", "Team Member"),
+                    task_title=task.get("title", "Untitled Task"),
+                    task_description=task.get("description", "No description provided."),
+                    project_name=project_name,
+                    priority=task.get("priority", "Medium"),
+                    due_date=due_date,
+                    assigned_by=admin_name,
+                    task_id=task.get("task_id", ""),
+                    estimated_hours=task.get("estimated_hours", 0),
+                    due_countdown=due_countdown,
+                )
+                logger.info(f"Task email sent to {assignee['email']}")
+            except Exception as email_err:
+                logger.error(f"Email failed for {assignee.get('email')}: {email_err}")
+            
+            # 2.5 second delay between individual emails to bypass Zoho's strict burst spam filter
+            await asyncio.sleep(2.5)
+                
         except Exception as e:
             logger.error(f"Failed to notify assignee {assignee_id}: {e}")
 
@@ -117,6 +147,8 @@ async def list_tasks(project_id: str = None, db=Depends(get_db), _admin=Depends(
     if project_id:
         query["project_id"] = project_id
     tasks = await db["tasks"].find(query).sort("created_at", -1).to_list(length=1000)
+    for t in tasks:
+        t["_id"] = str(t["_id"])
     return tasks
 
 
@@ -297,6 +329,16 @@ async def notify_task_assignee(
                 due_date=due_date,
                 assigned_by=current_admin.full_name,
             )
+            
+            # Send Fast2SMS SMS / WhatsApp if phone is present
+            if assignee.get("phone"):
+                asyncio.create_task(send_task_sms_and_whatsapp(
+                    phone=assignee["phone"],
+                    task_title=task.get("title", "Untitled Task"),
+                    project_name=project_name,
+                    assigned_by=current_admin.full_name
+                ))
+            
             sent_to.append(assignee["email"])
         except RuntimeError as e:
             raise HTTPException(status_code=503, detail=str(e))

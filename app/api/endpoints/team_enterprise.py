@@ -49,7 +49,7 @@ async def get_team_dashboard(db=Depends(get_db), _admin=Depends(get_current_acti
     perf_agg = await db["team_performance"].aggregate([
         {"$group": {"_id": None, "avg_score": {"$avg": "$overall_score"}}}
     ]).to_list(None)
-    avg_performance = perf_agg[0]["avg_score"] if perf_agg else 0
+    avg_performance = (perf_agg[0]["avg_score"] or 0) if perf_agg else 0
 
     # Pending leaves
     pending_leaves = await db["team_leaves"].count_documents({"status": "Pending"})
@@ -58,7 +58,7 @@ async def get_team_dashboard(db=Depends(get_db), _admin=Depends(get_current_acti
     hours_agg = await db["team_work_logs"].aggregate([
         {"$group": {"_id": None, "total": {"$sum": "$hours"}}}
     ]).to_list(None)
-    total_hours = hours_agg[0]["total"] if hours_agg else 0
+    total_hours = (hours_agg[0]["total"] or 0) if hours_agg else 0
 
     # Recent members (new joiners)
     new_joiners = await db["admins"].find({}).sort("created_at", -1).to_list(5)

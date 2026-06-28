@@ -5,6 +5,9 @@ from app.db.database import get_db
 from app.api.deps import get_current_active_admin, require_mutation_rights, get_current_admin_or_leader
 from app.core.datetime_utils import get_now
 from app.services.event_trigger_service import fire_event_background
+import asyncio
+from app.api.endpoints.task import _auto_notify_assignees, _generate_task_id
+from app.services.twilio_service import send_task_sms_and_whatsapp
 from app.schemas.pm_enterprise import (
     PMTaskCreate, PMTaskInDB,
     PMMilestoneCreate, PMMilestoneInDB,
@@ -67,24 +70,50 @@ async def get_pm_dashboard(db=Depends(get_db), _admin=Depends(get_current_active
 async def list_tasks(project_id: Optional[str] = None, db=Depends(get_db), _admin=Depends(get_current_active_admin)):
     query = {"project_id": project_id} if project_id else {}
     tasks = await db["pm_tasks"].find(query).sort("order", 1).to_list(1000)
+    for t in tasks:
+        t["_id"] = str(t["_id"])
+        if "created_at" not in t:
+            t["created_at"] = get_now()
+        if "updated_at" not in t:
+            t["updated_at"] = get_now()
     return tasks
 
 @router.post("/tasks", response_model=PMTaskInDB, status_code=201)
 async def create_task(task_in: PMTaskCreate, db=Depends(get_db), admin=Depends(require_mutation_rights)):
     now = get_now()
     doc = task_in.model_dump()
+    doc["task_id"] = await _generate_task_id(db)
+    
+    if doc.get("project_id"):
+        try:
+            proj = await db["projects"].find_one({"_id": _parse_id(doc["project_id"])})
+            if proj:
+                doc["project_name"] = proj.get("name", "Unknown Project")
+        except Exception:
+            pass
+
     doc.update({"created_at": now, "updated_at": now})
     result = await db["pm_tasks"].insert_one(doc)
     created = await db["pm_tasks"].find_one({"_id": result.inserted_id})
+    
+    # Trigger auto notifications
+    asyncio.create_task(_auto_notify_assignees(db, doc, admin.email, admin.full_name))
+    
+    created["_id"] = str(created["_id"])
     fire_event_background("pm_task_created", "pm_tasks", str(result.inserted_id), admin.email, doc, db)
     return created
 
 @router.put("/tasks/{id}", response_model=PMTaskInDB)
 async def update_task(id: str, task_in: dict, db=Depends(get_db), admin=Depends(require_mutation_rights)):
     task_in["updated_at"] = get_now()
+    task_in.pop("_id", None)
+    task_in.pop("id", None)
     result = await db["pm_tasks"].find_one_and_update({"_id": _parse_id(id)}, {"$set": task_in}, return_document=True)
     if not result:
         raise HTTPException(status_code=404, detail="Task not found")
+    result["_id"] = str(result["_id"])
+    if "created_at" not in result:
+        result["created_at"] = get_now()
     fire_event_background("pm_task_updated", "pm_tasks", id, admin.email, task_in, db)
     return result
 
@@ -95,6 +124,49 @@ async def delete_task(id: str, db=Depends(get_db), admin=Depends(get_current_adm
         raise HTTPException(status_code=404, detail="Task not found")
     fire_event_background("pm_task_deleted", "pm_tasks", id, admin.email, {}, db)
     return {"status": "success", "message": "Task deleted"}
+
+@router.post("/tasks/{id}/sms")
+async def send_task_sms(id: str, db=Depends(get_db), admin=Depends(get_current_active_admin)):
+    """Send SMS notification to all assignees of a task."""
+    task = await db["pm_tasks"].find_one({"_id": _parse_id(id)})
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    task["_id"] = str(task["_id"])
+    
+    project_name = task.get("project_name", "Unknown Project")
+    if task.get("project_id") and project_name == "Unknown Project":
+        try:
+            project = await db["projects"].find_one({"_id": _parse_id(task["project_id"])})
+            if project:
+                project_name = project.get("name", "Unknown Project")
+        except Exception:
+            pass
+    
+    assignee_ids = []
+    if task.get("assigned_to"):
+        assignee_ids.append(task["assigned_to"])
+    if task.get("assigned_to_multiple"):
+        assignee_ids.extend(task["assigned_to_multiple"])
+    assignee_ids = list(set(assignee_ids))
+    
+    sent_count = 0
+    for assignee_id in assignee_ids:
+        try:
+            assignee = await db["admins"].find_one({"_id": ObjectId(assignee_id)})
+            if not assignee or not assignee.get("phone"):
+                continue
+            asyncio.create_task(send_task_sms_and_whatsapp(
+                phone=assignee["phone"],
+                task=task,
+                project_name=project_name,
+                assigned_by=admin.full_name
+            ))
+            sent_count += 1
+        except Exception:
+            pass
+    
+    return {"status": "success", "message": f"SMS sent to {sent_count} assignee(s)"}
 
 # ── MILESTONES ──
 @router.get("/milestones", response_model=List[PMMilestoneInDB])

@@ -15,6 +15,8 @@ Setup (2 minutes):
 """
 import logging
 import httpx
+import aiosmtplib
+from email.message import EmailMessage
 
 from app.core.config import settings
 
@@ -23,25 +25,31 @@ logger = logging.getLogger(__name__)
 RESEND_API_URL = "https://api.resend.com/emails"
 
 
-def _get_from_address() -> str:
+def _get_credentials_for_recipient(recipient: str) -> tuple[str, str]:
     """
-    If a verified custom domain email is configured, use it.
-    Otherwise, fallback to Resend's default onboarding@resend.dev.
-    Resend strictly forbids sending FROM public webmail addresses (like @gmail.com).
+    Pick the correct Resend API key and sender address based on recipient domain.
+    @ulmind.in recipients → RESEND_API_KEY_ULMIND_IN + MAIL_ADDRESS_ULMIND_IN
+    @ulmind.com (and others) → RESEND_API_KEY + MAIL_ADDRESS
     """
-    mail_addr = settings.MAIL_ADDRESS
-    if mail_addr and mail_addr.strip():
-        mail_addr = mail_addr.strip().lower()
-        # List of public domains that cannot be verified in Resend
-        public_domains = ["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "live.com", "icloud.com", "mail.com", "gmx.com", "aol.com"]
-        domain = mail_addr.split("@")[-1]
-        
-        if domain not in public_domains:
-            name = settings.MAIL_FROM_NAME or "ULMiND Team"
-            return f"{name} <{settings.MAIL_ADDRESS}>"
-            
-    # Fallback to Resend's default sender for unverified custom domains/testing
-    return "ULMiND Team <onboarding@resend.dev>"
+    domain = recipient.strip().lower().split("@")[-1] if "@" in recipient else ""
+    name = settings.MAIL_FROM_NAME or "ULMiND Team"
+
+    if domain == "ulmind.in":
+        api_key = settings.RESEND_API_KEY_ULMIND_IN or settings.RESEND_API_KEY
+        mail_addr = settings.MAIL_ADDRESS_ULMIND_IN
+        if mail_addr and mail_addr.strip():
+            return api_key, f"{name} <{mail_addr.strip()}>"
+        return api_key, f"{name} <onboarding@resend.dev>"
+    else:
+        api_key = settings.RESEND_API_KEY
+        mail_addr = settings.MAIL_ADDRESS
+        if mail_addr and mail_addr.strip():
+            addr = mail_addr.strip().lower()
+            public_domains = ["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "live.com", "icloud.com"]
+            dom = addr.split("@")[-1]
+            if dom not in public_domains:
+                return api_key, f"{name} <{settings.MAIL_ADDRESS}>"
+        return api_key, f"{name} <onboarding@resend.dev>"
 
 
 
@@ -133,10 +141,10 @@ If you did not request this, please ignore this email.
 
 async def send_otp_email(recipient: str, otp: str) -> None:
     """
-    Send OTP email via Resend HTTP API (HTTPS — works on Render).
+    Send OTP email via Resend HTTP API.
     Raises RuntimeError on failure so the caller returns HTTP 503.
     """
-    api_key = settings.RESEND_API_KEY
+    api_key, from_address = _get_credentials_for_recipient(recipient)
 
     if not api_key or not api_key.strip():
         raise RuntimeError(
@@ -145,7 +153,7 @@ async def send_otp_email(recipient: str, otp: str) -> None:
         )
 
     payload = {
-        "from": _get_from_address(),
+        "from": from_address,
         "to": [recipient],
         "subject": "Password Reset OTP — ULMiND",
         "html": _build_html_body(otp),
@@ -195,50 +203,57 @@ async def send_otp_email(recipient: str, otp: str) -> None:
 #  GENERIC EMAIL SENDER
 # ══════════════════════════════════════════════════════════════════════════════
 
-async def send_email(recipient: str, subject: str, html_body: str, text_body: str = "") -> None:
+async def send_email(recipient: str | list[str], subject: str, html_body: str, text_body: str = "") -> None:
     """
-    Generic email sender via Resend HTTP API.
-    Raises RuntimeError on failure.
+    Generic email sender using Zoho SMTP to guarantee inbox delivery and bypass spoofing blocks.
     """
-    api_key = settings.RESEND_API_KEY
-    if not api_key or not api_key.strip():
-        logger.warning(f"RESEND_API_KEY is not configured. Mocking email delivery to {recipient}.")
-        logger.info(f"Subject: {subject}")
-        # Return success for testing purposes
+    from_address = f"{settings.MAIL_FROM_NAME} <{settings.MAIL_ADDRESS}>"
+    smtp_user = settings.MAIL_ADDRESS
+    smtp_pass = settings.ZOHO_SMTP_PASS
+    
+    if not smtp_pass:
+        logger.warning(f"ZOHO_SMTP_PASS is not configured. Mocking email delivery to {recipient}.")
         return
 
-    payload = {
-        "from": _get_from_address(),
-        "to": [recipient],
-        "subject": subject,
-        "html": html_body,
-        "text": text_body or subject,
-    }
-
+    recipients = recipient if isinstance(recipient, list) else [recipient]
+    
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.post(
-                RESEND_API_URL,
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-            )
+        # We loop through recipients to send individual emails (Bcc style) to bypass bulk spam filters
+        for r in recipients:
+            msg = EmailMessage()
+            msg["Subject"] = subject
+            msg["From"] = from_address
+            msg["To"] = r
+            msg.set_content(text_body or subject)
+            msg.add_alternative(html_body, subtype="html")
 
-        if response.status_code not in (200, 201):
-            body = response.text
-            logger.error(f"Resend rejected email to {recipient}. Status: {response.status_code}. Response: {body}")
-            raise RuntimeError(f"Failed to send email (Resend {response.status_code}).")
+            # Try .in first, fallback to .com if network fails
+            try:
+                await aiosmtplib.send(
+                    msg,
+                    hostname="smtp.zoho.in",
+                    port=465,
+                    use_tls=True,
+                    username=smtp_user,
+                    password=smtp_pass,
+                    timeout=15.0
+                )
+            except Exception:
+                # Fallback to zoho.com if .in is the wrong region for this account
+                await aiosmtplib.send(
+                    msg,
+                    hostname="smtp.zoho.com",
+                    port=465,
+                    use_tls=True,
+                    username=smtp_user,
+                    password=smtp_pass,
+                    timeout=15.0
+                )
 
-        logger.info(f"Email sent successfully to {recipient} via Resend")
+            logger.info(f"Email sent successfully to {r} via Zoho SMTP")
 
-    except httpx.TimeoutException:
-        logger.error(f"Resend API timed out while sending email to {recipient}")
-        raise RuntimeError("Email service timed out.")
-    except httpx.RequestError as e:
-        logger.error(f"Network error calling Resend API for {recipient}: {e}")
-        raise RuntimeError("Failed to reach the email service.")
+    except Exception as e:
+        logger.error(f"Failed to send email to {recipient} via Zoho SMTP: {e}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -253,17 +268,27 @@ def _build_task_assignment_html(
     priority: str,
     due_date: str,
     assigned_by: str,
+    task_id: str = "",
+    estimated_hours: float = 0,
+    due_countdown: str = "",
 ) -> str:
     """Build an ultra-premium, dark-mode task assignment email."""
 
     # Priority color mapping
     priority_colors = {
-        "Urgent": ("#ef4444", "#dc2626", "🔴"),
-        "High": ("#f59e0b", "#d97706", "🟠"),
-        "Medium": ("#3b82f6", "#2563eb", "🔵"),
-        "Low": ("#10b981", "#059669", "🟢"),
+        "Urgent": ("#ef4444", "#dc2626", "&#128308;"),
+        "High": ("#f59e0b", "#d97706", "&#128992;"),
+        "Medium": ("#3b82f6", "#2563eb", "&#128309;"),
+        "Low": ("#10b981", "#059669", "&#128994;"),
     }
-    p_color, p_dark, p_emoji = priority_colors.get(priority, ("#3b82f6", "#2563eb", "🔵"))
+    p_color, p_dark, p_emoji = priority_colors.get(priority, ("#3b82f6", "#2563eb", "&#128309;"))
+
+    due_display = due_date
+    if due_countdown:
+        due_display = f"{due_date} ({due_countdown})"
+
+    est_display = f"{estimated_hours}h" if estimated_hours else "Not set"
+    task_link = f"https://ulmind.com/admin/projects/tasks?search={task_id}" if task_id else "https://ulmind.com/admin/projects/tasks"
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -278,12 +303,12 @@ def _build_task_assignment_html(
       <td align="center">
         <table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#0d1117;border-radius:24px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,0.6),0 0 0 1px rgba(255,255,255,0.06);">
 
-          <!-- ─── Top accent bar ─── -->
+          <!-- Top accent bar -->
           <tr>
             <td style="height:4px;background:linear-gradient(90deg,#10b981,#3b82f6,#8b5cf6,#ec4899);"></td>
           </tr>
 
-          <!-- ─── Logo & Header ─── -->
+          <!-- Logo & Header -->
           <tr>
             <td style="padding:36px 40px 0;">
               <table width="100%" cellpadding="0" cellspacing="0">
@@ -299,11 +324,11 @@ def _build_task_assignment_html(
             </td>
           </tr>
 
-          <!-- ─── Greeting ─── -->
+          <!-- Greeting -->
           <tr>
             <td style="padding:28px 40px 0;">
               <h1 style="margin:0;font-size:26px;font-weight:800;color:#f0f6fc;letter-spacing:-0.02em;line-height:1.3;">
-                You've been assigned a task ✨
+                You've been assigned a task
               </h1>
               <p style="margin:8px 0 0;font-size:15px;color:#8b949e;line-height:1.6;">
                 Hey <strong style="color:#c9d1d9;">{assignee_name}</strong>, a new task has been assigned to you.
@@ -311,7 +336,7 @@ def _build_task_assignment_html(
             </td>
           </tr>
 
-          <!-- ─── Task Card ─── -->
+          <!-- Task Card -->
           <tr>
             <td style="padding:24px 40px 0;">
               <div style="background:#161b22;border:1px solid rgba(255,255,255,0.06);border-radius:16px;overflow:hidden;">
@@ -339,19 +364,37 @@ def _build_task_assignment_html(
                     <p style="margin:6px 0 0;font-size:14px;color:#c9d1d9;line-height:1.6;">{task_description}</p>
                   </div>
 
-                  <!-- Info grid -->
+                  <!-- Info grid: Task ID + Project -->
                   <table width="100%" cellpadding="0" cellspacing="0">
                     <tr>
                       <td width="50%" style="padding-right:8px;">
                         <div style="padding:14px 16px;background:#0d1117;border-radius:10px;">
-                          <span style="font-size:10px;color:#6e7681;text-transform:uppercase;letter-spacing:0.1em;font-weight:700;">📁 Project</span>
-                          <p style="margin:4px 0 0;font-size:14px;font-weight:600;color:#f0f6fc;">{project_name}</p>
+                          <span style="font-size:10px;color:#6e7681;text-transform:uppercase;letter-spacing:0.1em;font-weight:700;">Task ID</span>
+                          <p style="margin:4px 0 0;font-size:14px;font-weight:600;color:#10b981;font-family:monospace;">{task_id or 'N/A'}</p>
                         </div>
                       </td>
                       <td width="50%" style="padding-left:8px;">
                         <div style="padding:14px 16px;background:#0d1117;border-radius:10px;">
-                          <span style="font-size:10px;color:#6e7681;text-transform:uppercase;letter-spacing:0.1em;font-weight:700;">📅 Due Date</span>
-                          <p style="margin:4px 0 0;font-size:14px;font-weight:600;color:#f0f6fc;">{due_date}</p>
+                          <span style="font-size:10px;color:#6e7681;text-transform:uppercase;letter-spacing:0.1em;font-weight:700;">Project</span>
+                          <p style="margin:4px 0 0;font-size:14px;font-weight:600;color:#f0f6fc;">{project_name}</p>
+                        </div>
+                      </td>
+                    </tr>
+                  </table>
+
+                  <!-- Info grid: Due Date + Est. Hours -->
+                  <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:12px;">
+                    <tr>
+                      <td width="50%" style="padding-right:8px;">
+                        <div style="padding:14px 16px;background:#0d1117;border-radius:10px;">
+                          <span style="font-size:10px;color:#6e7681;text-transform:uppercase;letter-spacing:0.1em;font-weight:700;">Due Date</span>
+                          <p style="margin:4px 0 0;font-size:14px;font-weight:600;color:#f0f6fc;">{due_display}</p>
+                        </div>
+                      </td>
+                      <td width="50%" style="padding-left:8px;">
+                        <div style="padding:14px 16px;background:#0d1117;border-radius:10px;">
+                          <span style="font-size:10px;color:#6e7681;text-transform:uppercase;letter-spacing:0.1em;font-weight:700;">Est. Time</span>
+                          <p style="margin:4px 0 0;font-size:14px;font-weight:600;color:#f0f6fc;">{est_display}</p>
                         </div>
                       </td>
                     </tr>
@@ -392,16 +435,16 @@ def _build_task_assignment_html(
             </td>
           </tr>
 
-          <!-- ─── CTA Button ─── -->
+          <!-- CTA Button -->
           <tr>
             <td style="padding:28px 40px 0;" align="center">
-              <a href="https://ulmind.com/admin/projects/tasks" style="display:inline-block;padding:14px 36px;background:linear-gradient(135deg,#10b981,#059669);border-radius:12px;color:#fff;font-size:14px;font-weight:700;text-decoration:none;letter-spacing:0.02em;box-shadow:0 8px 24px rgba(16,185,129,0.3),0 0 0 1px rgba(16,185,129,0.2);">
-                View Task in Dashboard →
+              <a href="{task_link}" style="display:inline-block;padding:14px 36px;background:linear-gradient(135deg,#10b981,#059669);border-radius:12px;color:#fff;font-size:14px;font-weight:700;text-decoration:none;letter-spacing:0.02em;box-shadow:0 8px 24px rgba(16,185,129,0.3),0 0 0 1px rgba(16,185,129,0.2);">
+                View Task in Dashboard &rarr;
               </a>
             </td>
           </tr>
 
-          <!-- ─── Assigned by ─── -->
+          <!-- Assigned by -->
           <tr>
             <td style="padding:24px 40px 0;" align="center">
               <p style="margin:0;font-size:13px;color:#6e7681;">
@@ -410,16 +453,16 @@ def _build_task_assignment_html(
             </td>
           </tr>
 
-          <!-- ─── Footer ─── -->
+          <!-- Footer -->
           <tr>
             <td style="padding:28px 40px 32px;">
               <div style="border-top:1px solid rgba(255,255,255,0.06);padding-top:20px;text-align:center;">
                 <p style="margin:0;font-size:11px;color:#484f58;line-height:1.6;">
-                  ULMiND • Digital Solutions & IT Services<br>
+                  ULMiND &bull; Digital Solutions &amp; IT Services<br>
                   This is an automated notification from your team dashboard.
                 </p>
                 <p style="margin:8px 0 0;font-size:10px;color:#30363d;">
-                  © 2026 ULMiND. All rights reserved.
+                  &copy; 2026 ULMiND. All rights reserved.
                 </p>
               </div>
             </td>
@@ -434,7 +477,7 @@ def _build_task_assignment_html(
 
 
 async def send_task_assignment_email(
-    recipient: str,
+    recipient: str | list[str],
     assignee_name: str,
     task_title: str,
     task_description: str,
@@ -442,6 +485,9 @@ async def send_task_assignment_email(
     priority: str,
     due_date: str,
     assigned_by: str,
+    task_id: str = "",
+    estimated_hours: float = 0,
+    due_countdown: str = "",
 ) -> None:
     """Send an ultra-premium task assignment notification email."""
     html = _build_task_assignment_html(
@@ -452,30 +498,38 @@ async def send_task_assignment_email(
         priority=priority,
         due_date=due_date,
         assigned_by=assigned_by,
+        task_id=task_id,
+        estimated_hours=estimated_hours,
+        due_countdown=due_countdown,
     )
 
-    plain = f"""New Task Assignment — ULMiND
+    est_display = f"{estimated_hours}h" if estimated_hours else "Not set"
+    due_display = f"{due_date} ({due_countdown})" if due_countdown else due_date
+    task_link = f"https://ulmind.com/admin/projects/tasks?search={task_id}" if task_id else "https://ulmind.com/admin/projects/tasks"
+
+    plain = f"""ULMiND Task Assigned!
 
 Hi {assignee_name},
 
 You've been assigned a new task:
 
+ID: {task_id or 'N/A'}
 Task: {task_title}
 Project: {project_name}
 Priority: {priority}
-Due: {due_date}
+Due: {due_display}
+Est. Time: {est_display}
 Assigned by: {assigned_by}
 
 Description: {task_description}
 
-View your tasks at: https://ulmind.com/admin/projects/tasks
+View: {task_link}
 
-— ULMiND Team"""
+-- ULMiND Team"""
 
     await send_email(
         recipient=recipient,
-        subject=f"🚀 New Task: {task_title} — ULMiND",
+        subject=f"New Task: {task_title} — ULMiND",
         html_body=html,
         text_body=plain,
     )
-

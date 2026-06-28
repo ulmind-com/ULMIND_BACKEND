@@ -17,6 +17,8 @@ def _parse_id(id: str) -> ObjectId:
 @router.get("/", response_model=List[NotificationInDB])
 async def list_notifications(db=Depends(get_db), _admin=Depends(get_current_active_admin)):
     notifications = await db["notifications"].find({}).sort("created_at", -1).to_list(length=100)
+    for n in notifications:
+        n["_id"] = str(n["_id"])
     return notifications
 
 @router.post("/", response_model=NotificationInDB, status_code=201)

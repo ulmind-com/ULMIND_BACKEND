@@ -2,10 +2,11 @@ import os
 from cryptography.fernet import Fernet
 import base64
 import hashlib
+from app.core.config import settings
 
 def get_encryption_key() -> bytes:
     """Generate a consistent 32-url-safe-base64 key from JWT_SECRET or fallback."""
-    secret = os.getenv("JWT_SECRET", "super-secret-key-fallback")
+    secret = settings.JWT_SECRET or "super-secret-key-fallback"
     # Hash it to 32 bytes and base64 encode for Fernet
     digest = hashlib.sha256(secret.encode()).digest()
     return base64.urlsafe_b64encode(digest)
