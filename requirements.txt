@@ -168,4 +168,6 @@ cryptography>=42.0.0
     # via ulmind-tracking-backend (pyproject.toml)
 playwright>=1.40.0
     # via ulmind-tracking-backend (pyproject.toml)
+aiosmtplib>=5.1.2
+    # via ulmind-tracking-backend (pyproject.toml)
 
