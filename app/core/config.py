@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     TWILIO_AUTH_TOKEN: str = ""
     TWILIO_FROM_NUMBER: str = ""
 
+    # UptimeRobot
+    UPTIMEROBOT_API_KEY: str = "ur3211458-fb7e1b4adaeaecaa74e10a50"
+
     class Config:
         env_file = ".env"
         extra = "ignore"               # Silently skip unknown env vars (e.g. old MAIL_PASSWORD)
