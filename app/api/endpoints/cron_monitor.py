@@ -15,8 +15,9 @@ async def get_monitors(_admin=Depends(get_current_active_admin)):
     Fetches live monitors from UptimeRobot API using form-urlencoded POST request.
     """
     payload = {
-        "api_key": settings.UPTIMEROBOT_API_KEY,
-        "format": "json"
+        "api_key": settings.UPTIMEROBOT_API_KEY or "ur3211458-fb7e1b4adaeaecaa74e10a50",
+        "format": "json",
+        "all_time_uptime_ratio": "1"
     }
     
     headers = {
