@@ -32,30 +32,30 @@ async def list_audit_logs(
     for log in logs_audit:
         all_logs.append({
             "_id": str(log["_id"]),
-            "user_id": log.get("admin_email", "system"),
-            "event_type": log.get("action", "unknown"),
-            "resource_type": log.get("resource_type", "system"),
-            "resource_id": log.get("resource_id"),
+            "user_id": str(log.get("admin_email", "system")),
+            "event_type": str(log.get("action", "unknown")),
+            "resource_type": str(log.get("resource_type", "system")),
+            "resource_id": str(log.get("resource_id")) if log.get("resource_id") else None,
             "old_value": log.get("old_value"),
             "new_value": log.get("new_value"),
-            "description": log.get("details", ""),
-            "ip_address": log.get("ip_address"),
-            "user_agent": log.get("user_agent"),
+            "description": str(log.get("details", "")),
+            "ip_address": str(log.get("ip_address", "")) if log.get("ip_address") else None,
+            "user_agent": str(log.get("user_agent", "")) if log.get("user_agent") else None,
             "created_at": log.get("timestamp", log.get("created_at", get_now())),
         })
 
     for log in logs_audit_logs:
         all_logs.append({
             "_id": str(log["_id"]),
-            "user_id": log.get("user_id", "system"),
-            "event_type": log.get("event_type", "unknown"),
-            "resource_type": log.get("resource_type", "system"),
-            "resource_id": log.get("resource_id"),
+            "user_id": str(log.get("user_id", "system")),
+            "event_type": str(log.get("event_type", "unknown")),
+            "resource_type": str(log.get("resource_type", "system")),
+            "resource_id": str(log.get("resource_id")) if log.get("resource_id") else None,
             "old_value": log.get("old_value"),
             "new_value": log.get("new_value"),
-            "description": log.get("description", ""),
-            "ip_address": log.get("ip_address"),
-            "user_agent": log.get("user_agent"),
+            "description": str(log.get("description", "")),
+            "ip_address": str(log.get("ip_address", "")) if log.get("ip_address") else None,
+            "user_agent": str(log.get("user_agent", "")) if log.get("user_agent") else None,
             "created_at": log.get("created_at", get_now()),
         })
 
@@ -79,11 +79,11 @@ async def get_activity_feed(
     for log in logs:
         activities.append({
             "_id": str(log["_id"]),
-            "event_type": log.get("event_type", "unknown"),
-            "resource_type": log.get("resource_type", ""),
-            "resource_id": log.get("resource_id", ""),
-            "action_description": log.get("action_description", ""),
-            "performed_by": log.get("performed_by", "system"),
+            "event_type": str(log.get("event_type", "unknown")),
+            "resource_type": str(log.get("resource_type", "")),
+            "resource_id": str(log.get("resource_id", "")) if log.get("resource_id") else "",
+            "action_description": str(log.get("action_description", "")),
+            "performed_by": str(log.get("performed_by", "system")),
             "timestamp": log.get("timestamp", get_now()),
         })
 
