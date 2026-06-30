@@ -10,7 +10,7 @@ from slowapi.errors import RateLimitExceeded
 from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.db.database import connect_to_mongo, close_mongo_connection
-from app.api.endpoints import auth, client, project, team, stats, track, page_analytics, merchandise, user_management, offers, sheets, ai, activity, finance, notification, task, crm_enterprise, pm_enterprise, team_enterprise, audit, project_env, delete_requests, lead_scraper, env_store, manager_tracking, manager_tasks, cron_monitor
+from app.api.endpoints import auth, client, project, team, stats, track, page_analytics, merchandise, user_management, offers, sheets, ai, activity, finance, notification, task, crm_enterprise, pm_enterprise, team_enterprise, audit, project_env, delete_requests, lead_scraper, env_store, manager_tracking, manager_tasks, cron_monitor, website_content
 from app.api import websockets
 
 logging.basicConfig(level=logging.INFO)
@@ -97,6 +97,7 @@ app.include_router(env_store.router, prefix=f"{settings.API_V1_STR}/env-store", 
 app.include_router(manager_tracking.router, prefix=f"{settings.API_V1_STR}/manager", tags=["Manager Tracking"])
 app.include_router(manager_tasks.router, prefix=f"{settings.API_V1_STR}/manager", tags=["Manager Tasks"])
 app.include_router(cron_monitor.router, prefix=f"{settings.API_V1_STR}/cron-monitor", tags=["Cron Monitor"])
+app.include_router(website_content.router, prefix=f"{settings.API_V1_STR}/website-content", tags=["Website Content"])
 
 @app.get("/", tags=["Health"])
 async def health_check():
