@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     # UptimeRobot
     UPTIMEROBOT_API_KEY: str = "ur3211458-fb7e1b4adaeaecaa74e10a50"
 
+    # Hardware Monitoring AI (Groq)
+    GROQ_API_KEY: str = ""
+
     class Config:
         env_file = ".env"
         extra = "ignore"               # Silently skip unknown env vars (e.g. old MAIL_PASSWORD)
