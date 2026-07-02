@@ -462,13 +462,30 @@ async def qr_login(
             })
             
             employee = {**_sanitize_employee(employee), "face_verified": face_verified}
+            
+            # Update live status immediately
+            await db["hw_live_status"].update_one(
+                {"employee_id": employee["employee_id"]},
+                {"$set": {
+                    "employee_id": employee["employee_id"],
+                    "employee_db_id": str(employee["_id"]),
+                    "status": "online",
+                    "camera_state": "on",
+                    "face_detected": True,
+                    "last_heartbeat": now,
+                    "is_online": True,
+                    "updated_at": now
+                }},
+                upsert=True
+            )
+            
             return {
                 "status": "success",
                 "token": token,
                 "admin_token": admin_token,
                 "session_id": str(existing_session["_id"]),
                 "employee": employee,
-                "session_start": existing_session["login_time"].isoformat(),
+                "session_start": existing_session["login_time"].replace(tzinfo=timezone.utc).isoformat() if existing_session["login_time"].tzinfo is None else existing_session["login_time"].isoformat(),
                 "session_type": "afternoon",
                 "session_schedule": schedule,
                 "message": "Welcome back from lunch! Afternoon session started."
@@ -484,13 +501,30 @@ async def qr_login(
             })
             
             employee = {**_sanitize_employee(employee), "face_verified": face_verified}
+            
+            # Update live status immediately
+            await db["hw_live_status"].update_one(
+                {"employee_id": employee["employee_id"]},
+                {"$set": {
+                    "employee_id": employee["employee_id"],
+                    "employee_db_id": str(employee["_id"]),
+                    "status": "online",
+                    "camera_state": "on",
+                    "face_detected": True,
+                    "last_heartbeat": now,
+                    "is_online": True,
+                    "updated_at": now
+                }},
+                upsert=True
+            )
+            
             return {
                 "status": "success",
                 "token": token,
                 "admin_token": admin_token,
                 "session_id": str(existing_session["_id"]),
                 "employee": employee,
-                "session_start": existing_session["login_time"].isoformat(),
+                "session_start": existing_session["login_time"].replace(tzinfo=timezone.utc).isoformat() if existing_session["login_time"].tzinfo is None else existing_session["login_time"].isoformat(),
                 "session_type": "existing",
                 "session_schedule": schedule,
                 "message": "Session already active."
@@ -542,6 +576,22 @@ async def qr_login(
         "details": {"device_info": login_data.get("device_info"), "face_verified": face_verified},
         "timestamp": now,
     })
+    
+    # Update live status immediately
+    await db["hw_live_status"].update_one(
+        {"employee_id": employee["employee_id"]},
+        {"$set": {
+            "employee_id": employee["employee_id"],
+            "employee_db_id": str(employee["_id"]),
+            "status": "online",
+            "camera_state": "on",
+            "face_detected": True,
+            "last_heartbeat": now,
+            "is_online": True,
+            "updated_at": now
+        }},
+        upsert=True
+    )
     
     # Update employee session count
     await db["hw_employees"].update_one(
