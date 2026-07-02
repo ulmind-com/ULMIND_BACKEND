@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     # Hardware Monitoring AI (Groq)
     GROQ_API_KEY: str = ""
 
+    # Hardware Anti-cheat / Face verification
+    HW_REQUIRE_FACE_MATCH: bool = True   # Enforce face match at QR login when a face is enrolled
+    HW_FACE_MATCH_THRESHOLD: float = 0.55  # Max euclidean distance for a face-api.js 128-d descriptor match (lower = stricter)
+
     class Config:
         env_file = ".env"
         extra = "ignore"               # Silently skip unknown env vars (e.g. old MAIL_PASSWORD)

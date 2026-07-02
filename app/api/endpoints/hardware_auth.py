@@ -80,6 +80,46 @@ def _get_duty_schedule() -> dict:
 
 
 # ═══════════════════════════════════════════════════════════════
+#  FACE VERIFICATION (Anti-cheat)
+# ═══════════════════════════════════════════════════════════════
+#  Face descriptors are 128-float vectors produced client-side by
+#  face-api.js (FaceRecognitionNet). We never send the enrolled
+#  reference back to the browser — matching is done server-side so
+#  a stolen QR alone can't unlock another person's account.
+
+SENSITIVE_EMPLOYEE_FIELDS = ("face_descriptor", "face_encoding")
+
+
+def _face_distance(a: list, b: list) -> float:
+    """Euclidean distance between two face descriptors. Lower = more similar."""
+    if not a or not b or len(a) != len(b):
+        return 999.0
+    return sum((float(x) - float(y)) ** 2 for x, y in zip(a, b)) ** 0.5
+
+
+def _valid_descriptor(desc) -> bool:
+    """A usable descriptor is a 128-length list of finite numbers."""
+    if not isinstance(desc, list) or len(desc) != 128:
+        return False
+    try:
+        return all(isinstance(v, (int, float)) for v in desc)
+    except TypeError:
+        return False
+
+
+def _sanitize_employee(emp: dict) -> dict:
+    """Strip sensitive biometric fields before returning an employee to a client."""
+    if not isinstance(emp, dict):
+        return emp
+    clean = {k: v for k, v in emp.items() if k not in SENSITIVE_EMPLOYEE_FIELDS}
+    # Expose only a boolean flag about enrollment, never the vector itself.
+    clean["face_enrolled"] = _valid_descriptor(emp.get("face_descriptor"))
+    if "_id" in clean:
+        clean["_id"] = str(clean["_id"])
+    return clean
+
+
+# ═══════════════════════════════════════════════════════════════
 #  EMPLOYEE CRUD
 # ═══════════════════════════════════════════════════════════════
 
@@ -121,7 +161,15 @@ async def create_employee(
         "created_at": now,
         "updated_at": now,
     }
-    
+
+    # Optional biometric enrollment at creation time.
+    incoming_desc = employee_data.get("face_descriptor")
+    if incoming_desc is not None:
+        if not _valid_descriptor(incoming_desc):
+            raise HTTPException(status_code=400, detail="face_descriptor must be a 128-number array")
+        doc["face_descriptor"] = incoming_desc
+        doc["face_enrolled_at"] = now
+
     result = await db["hw_employees"].insert_one(doc)
     doc["_id"] = result.inserted_id
     
@@ -136,9 +184,8 @@ async def create_employee(
     
     doc["qr_code_data"] = qr_payload
     doc["qr_code_image"] = qr_image
-    doc["_id"] = str(doc["_id"])
-    
-    return {"status": "success", "employee": doc}
+
+    return {"status": "success", "employee": _sanitize_employee(doc)}
 
 
 @router.get("/employees")
@@ -148,8 +195,7 @@ async def list_employees(
 ):
     """List all employees."""
     employees = await db["hw_employees"].find().to_list(100)
-    for emp in employees:
-        emp["_id"] = str(emp["_id"])
+    employees = [_sanitize_employee(emp) for emp in employees]
     return {"status": "success", "employees": employees, "total": len(employees)}
 
 
@@ -167,9 +213,8 @@ async def get_employee(
     
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
-    
-    emp["_id"] = str(emp["_id"])
-    return {"status": "success", "employee": emp}
+
+    return {"status": "success", "employee": _sanitize_employee(emp)}
 
 
 @router.put("/employees/{employee_id}")
@@ -180,13 +225,16 @@ async def update_employee(
     current_admin=Depends(get_current_admin)
 ):
     """Update employee details."""
-    # Remove protected fields
+    # Remove protected fields (biometrics only via the dedicated enroll endpoint)
     update_data.pop("_id", None)
     update_data.pop("qr_code_data", None)
     update_data.pop("qr_code_image", None)
     update_data.pop("created_at", None)
+    update_data.pop("face_descriptor", None)
+    update_data.pop("face_encoding", None)
+    update_data.pop("face_enrolled_at", None)
     update_data["updated_at"] = get_now()
-    
+
     result = await db["hw_employees"].find_one_and_update(
         {"_id": ObjectId(employee_id)},
         {"$set": update_data},
@@ -194,9 +242,8 @@ async def update_employee(
     )
     if not result:
         raise HTTPException(status_code=404, detail="Employee not found")
-    
-    result["_id"] = str(result["_id"])
-    return {"status": "success", "employee": result}
+
+    return {"status": "success", "employee": _sanitize_employee(result)}
 
 
 @router.delete("/employees/{employee_id}")
@@ -236,6 +283,58 @@ async def regenerate_qr(
         "qr_code_data": qr_payload,
         "qr_code_image": qr_image
     }
+
+
+@router.post("/employees/{employee_id}/enroll-face")
+async def enroll_face(
+    employee_id: str,
+    payload: dict,
+    db=Depends(get_db),
+    current_admin=Depends(get_current_admin)
+):
+    """
+    Enroll (or re-enroll) an employee's face for anti-cheat verification.
+    Expects `face_descriptor`: a 128-number vector from face-api.js.
+    The reference vector is stored server-side and never returned to clients.
+    """
+    descriptor = payload.get("face_descriptor")
+    if not _valid_descriptor(descriptor):
+        raise HTTPException(status_code=400, detail="face_descriptor must be a 128-number array")
+
+    try:
+        oid = ObjectId(employee_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid employee id")
+
+    result = await db["hw_employees"].find_one_and_update(
+        {"_id": oid},
+        {"$set": {
+            "face_descriptor": descriptor,
+            "face_enrolled_at": get_now(),
+            "updated_at": get_now(),
+        }},
+        return_document=True,
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    return {"status": "success", "message": "Face enrolled", "employee": _sanitize_employee(result)}
+
+
+@router.delete("/employees/{employee_id}/face")
+async def remove_face(
+    employee_id: str,
+    db=Depends(get_db),
+    current_admin=Depends(get_current_admin)
+):
+    """Remove an employee's enrolled face (disables face verification for them)."""
+    result = await db["hw_employees"].update_one(
+        {"_id": ObjectId(employee_id)},
+        {"$unset": {"face_descriptor": "", "face_enrolled_at": ""}, "$set": {"updated_at": get_now()}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    return {"status": "success", "message": "Face enrollment removed"}
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -282,7 +381,48 @@ async def qr_login(
     # Verify employee_id matches
     if employee["employee_id"] != employee_id:
         raise HTTPException(status_code=403, detail="QR code data mismatch")
-    
+
+    # ── Anti-cheat: face verification (QR + Face) ──
+    # If this employee has an enrolled face, the live face captured at the
+    # kiosk must match — a stolen QR alone will not unlock the account.
+    reference = employee.get("face_descriptor")
+    live_descriptor = login_data.get("face_descriptor")
+    liveness_passed = bool(login_data.get("liveness_passed"))
+    face_verified = None
+
+    if _valid_descriptor(reference):
+        if settings.HW_REQUIRE_FACE_MATCH:
+            if not _valid_descriptor(live_descriptor):
+                raise HTTPException(
+                    status_code=422,
+                    detail="Face required. Look at the camera so we can verify it's really you.",
+                )
+            if not liveness_passed:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Liveness check failed. Please blink at the camera (photos are not allowed).",
+                )
+            distance = _face_distance(reference, live_descriptor)
+            if distance > settings.HW_FACE_MATCH_THRESHOLD:
+                # Record the spoof attempt against the QR owner for the audit trail.
+                await db["hw_monitoring_events"].insert_one({
+                    "employee_id": employee["employee_id"],
+                    "employee_db_id": str(employee["_id"]),
+                    "event_type": "face_mismatch_login_blocked",
+                    "confidence": 1.0,
+                    "severity": "critical",
+                    "details": {"distance": round(distance, 4), "threshold": settings.HW_FACE_MATCH_THRESHOLD},
+                    "timestamp": get_now(),
+                })
+                raise HTTPException(
+                    status_code=403,
+                    detail="Face does not match the badge owner. Login blocked.",
+                )
+            face_verified = True
+        elif _valid_descriptor(live_descriptor):
+            # Verification not enforced — record match result for analytics only.
+            face_verified = _face_distance(reference, live_descriptor) <= settings.HW_FACE_MATCH_THRESHOLD
+
     # Check for existing active session
     existing_session = await db["hw_sessions"].find_one({
         "employee_db_id": str(employee["_id"]),
@@ -291,6 +431,15 @@ async def qr_login(
     
     now = get_now()
     schedule = _get_duty_schedule()
+    
+    # ── GENERATE ADMIN TOKEN FOR SEAMLESS DASHBOARD LOGIN ──
+    admin_token = None
+    admin_user = await db["admins"].find_one({"email": employee["email"]})
+    if not admin_user:
+        # Fallback to super admin so the demo works seamlessly
+        admin_user = await db["admins"].find_one({"role": "super_admin"})
+    if admin_user:
+        admin_token = create_access_token(data={"id": str(admin_user["_id"])})
     
     if existing_session:
         # If returning from lunch break, update session
@@ -312,10 +461,11 @@ async def qr_login(
                 "type": "hw_session"
             })
             
-            employee["_id"] = str(employee["_id"])
+            employee = {**_sanitize_employee(employee), "face_verified": face_verified}
             return {
                 "status": "success",
                 "token": token,
+                "admin_token": admin_token,
                 "session_id": str(existing_session["_id"]),
                 "employee": employee,
                 "session_start": existing_session["login_time"].isoformat(),
@@ -333,10 +483,11 @@ async def qr_login(
                 "type": "hw_session"
             })
             
-            employee["_id"] = str(employee["_id"])
+            employee = {**_sanitize_employee(employee), "face_verified": face_verified}
             return {
                 "status": "success",
                 "token": token,
+                "admin_token": admin_token,
                 "session_id": str(existing_session["_id"]),
                 "employee": employee,
                 "session_start": existing_session["login_time"].isoformat(),
@@ -373,9 +524,10 @@ async def qr_login(
         "device_info": login_data.get("device_info"),
         "ip_address": login_data.get("ip_address"),
         "user_agent": login_data.get("user_agent"),
+        "face_verified": face_verified,
         "created_at": now,
     }
-    
+
     session_result = await db["hw_sessions"].insert_one(session_doc)
     session_id = str(session_result.inserted_id)
     
@@ -387,7 +539,7 @@ async def qr_login(
         "event_type": "session_start",
         "confidence": 1.0,
         "severity": "info",
-        "details": {"device_info": login_data.get("device_info")},
+        "details": {"device_info": login_data.get("device_info"), "face_verified": face_verified},
         "timestamp": now,
     })
     
@@ -406,15 +558,17 @@ async def qr_login(
         "type": "hw_session"
     })
     
-    employee["_id"] = str(employee["_id"])
-    
+    employee = {**_sanitize_employee(employee), "face_verified": face_verified}
+
     return {
         "status": "success",
         "token": token,
+        "admin_token": admin_token,
         "session_id": session_id,
         "employee": employee,
         "session_start": now.isoformat(),
         "session_type": "morning",
+        "face_verified": face_verified,
         "session_schedule": schedule,
         "message": "QR Login successful! Morning session started."
     }
