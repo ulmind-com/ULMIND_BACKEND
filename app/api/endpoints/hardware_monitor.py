@@ -401,33 +401,47 @@ async def get_live_status(
             duration = (now - login_time).total_seconds()
             
             status_data["session_id"] = str(session["_id"])
-            status_data["login_time"] = session["login_time"].isoformat()
+            status_data["login_time"] = login_time.isoformat()
             status_data["session_duration_seconds"] = duration
             status_data["active_seconds"] = session.get("total_active_seconds", 0)
             status_data["idle_seconds"] = session.get("total_idle_seconds", 0)
             total_hours += duration / 3600
             
+            # Dynamic AI Score based on face presence
+            face_seconds = session.get("face_present_seconds", status_data["active_seconds"])
+            if duration > 10:
+                live_score = min(100.0, max(0.0, (face_seconds / duration) * 100))
+                status_data["productivity_score"] = round(live_score, 1)
+            else:
+                status_data["productivity_score"] = 100.0
+            
             if session.get("status") == "lunch_break":
                 status_data["status"] = "lunch"
                 lunch_count += 1
-            elif live:
-                is_stale = False
-                if live.get("last_heartbeat"):
+            else:
+                # Determine last known activity time
+                hb = None
+                if live and live.get("last_heartbeat"):
                     hb = live["last_heartbeat"]
-                    if hb.tzinfo is None:
-                        hb = hb.replace(tzinfo=timezone.utc)
-                    is_stale = (now - hb).total_seconds() > 30
+                else:
+                    hb = session["login_time"]
+                    
+                if hb and hb.tzinfo is None:
+                    hb = hb.replace(tzinfo=timezone.utc)
+                
+                # Consider offline if no heartbeat for > 45 seconds
+                is_stale = (now - hb).total_seconds() > 45 if hb else True
                 
                 if is_stale:
                     status_data["status"] = "offline"
                 else:
-                    status_data["status"] = live.get("status", "online")
-                    status_data["camera_state"] = live.get("camera_state", "on")
-                    status_data["face_detected"] = live.get("face_detected", False)
-                    status_data["current_event"] = live.get("current_event")
-                    status_data["mobile_detected"] = live.get("mobile_detected", False)
-                    status_data["sleeping_detected"] = live.get("sleeping_detected", False)
-                    status_data["last_heartbeat"] = live["last_heartbeat"].isoformat() if live.get("last_heartbeat") else None
+                    status_data["status"] = live.get("status", "online") if live else "online"
+                    status_data["camera_state"] = live.get("camera_state", "on") if live else "on"
+                    status_data["face_detected"] = live.get("face_detected", False) if live else True
+                    status_data["current_event"] = live.get("current_event") if live else None
+                    status_data["mobile_detected"] = live.get("mobile_detected", False) if live else False
+                    status_data["sleeping_detected"] = live.get("sleeping_detected", False) if live else False
+                    status_data["last_heartbeat"] = hb.isoformat() if (live and live.get("last_heartbeat")) else None
                     
                     if status_data["status"] == "online":
                         online_count += 1
@@ -437,9 +451,6 @@ async def get_live_status(
                     # Count alerts
                     if status_data["mobile_detected"] or status_data["sleeping_detected"] or status_data["camera_state"] in ["covered", "off"]:
                         alert_count += 1
-            else:
-                status_data["status"] = "online"
-                online_count += 1
         
         total_productivity += status_data["productivity_score"]
         live_statuses.append(status_data)
