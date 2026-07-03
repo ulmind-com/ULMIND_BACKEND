@@ -56,6 +56,15 @@ async def _call_groq(prompt: str, system_prompt: str = "") -> str:
         return f"AI analysis temporarily unavailable: {str(e)}"
 
 
+def _aggregate_end_time(sessions: list) -> Optional[datetime]:
+    """End time for a day's aggregate: the latest logout, but only if
+    every session has ended. If any session is still live, return None so
+    the score measures against the current clock."""
+    if any(not s.get("logout_time") for s in sessions):
+        return None
+    return max(s["logout_time"] for s in sessions)
+
+
 def _compute_productivity_score(session: dict) -> dict:
     """Compute productivity scores from session data."""
     total_active = session.get("total_active_seconds", 0)
@@ -70,11 +79,18 @@ def _compute_productivity_score(session: dict) -> dict:
     sleeping_count = session.get("sleeping_detected_count", 0)
     
     login_time = session.get("login_time")
+    # For a finished session use its recorded end time; only a still-live
+    # session should measure against "now". Otherwise historical sessions
+    # would keep inflating their denominator against the current clock.
+    end_time = session.get("logout_time")
     now = get_now()
     if login_time:
         if login_time.tzinfo is None:
             login_time = login_time.replace(tzinfo=timezone.utc)
-        total_session = (now - login_time).total_seconds()
+        ref_time = end_time or now
+        if hasattr(ref_time, "tzinfo") and ref_time.tzinfo is None:
+            ref_time = ref_time.replace(tzinfo=timezone.utc)
+        total_session = (ref_time - login_time).total_seconds()
     else:
         total_session = total_active + total_idle + total_absent
     
@@ -183,6 +199,7 @@ async def get_productivity_score(
         "mobile_detected_count": sum(s.get("mobile_detected_count", 0) for s in sessions),
         "sleeping_detected_count": sum(s.get("sleeping_detected_count", 0) for s in sessions),
         "login_time": sessions[0]["login_time"],
+        "logout_time": _aggregate_end_time(sessions),
     }
     
     scores = _compute_productivity_score(combined)
@@ -379,6 +396,7 @@ async def get_daily_report(
             "mobile_detected_count": sum(s.get("mobile_detected_count", 0) for s in sessions),
             "sleeping_detected_count": sum(s.get("sleeping_detected_count", 0) for s in sessions),
             "login_time": sessions[0]["login_time"],
+            "logout_time": _aggregate_end_time(sessions),
         }
         scores = _compute_productivity_score(combined)
     
@@ -477,6 +495,7 @@ async def get_leaderboard(
                 "mobile_detected_count": sum(s.get("mobile_detected_count", 0) for s in sessions),
                 "sleeping_detected_count": sum(s.get("sleeping_detected_count", 0) for s in sessions),
                 "login_time": sessions[0]["login_time"],
+                "logout_time": _aggregate_end_time(sessions),
             }
             scores = _compute_productivity_score(combined)
         else:
