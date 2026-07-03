@@ -642,26 +642,41 @@ async def qr_logout(
     login_time = session["login_time"]
     if login_time.tzinfo is None:
         login_time = login_time.replace(tzinfo=timezone.utc)
-    
-    total_seconds = (now - login_time).total_seconds()
-    
+
+    # Wall-clock duration of the whole session (login → logout). This is
+    # NOT the worked time — it includes every pause (face away, sleep,
+    # lunch, idle). The AI-tracked active time is accumulated by the
+    # heartbeat into `total_active_seconds`, so we must NOT clobber it here.
+    session_seconds = (now - login_time).total_seconds()
+    active_seconds = session.get("total_active_seconds", 0)
+
+    # Optional flag: 8-hour duty was completed on the client before logout.
+    duty_completed = bool(logout_data.get("duty_completed"))
+
     update = {
-        "status": "ended",
+        "status": "completed" if duty_completed else "ended",
         "logout_time": now,
-        "total_active_seconds": total_seconds,
+        "total_session_seconds": session_seconds,
+        "duty_completed": duty_completed,
     }
-    
+
     # Set the correct end time based on current session segment
     if session.get("afternoon_start"):
         update["afternoon_end"] = now
     elif session.get("morning_start"):
         update["morning_end"] = now
-    
+
     await db["hw_sessions"].update_one(
         {"_id": ObjectId(session_id)},
         {"$set": update}
     )
-    
+
+    # Clear live status so the admin board shows the employee as offline.
+    await db["hw_live_status"].update_one(
+        {"employee_id": session["employee_id"]},
+        {"$set": {"status": "offline", "is_online": False, "face_detected": False, "updated_at": now}}
+    )
+
     # Log session end event
     await db["hw_monitoring_events"].insert_one({
         "session_id": session_id,
@@ -670,15 +685,21 @@ async def qr_logout(
         "event_type": "session_end",
         "confidence": 1.0,
         "severity": "info",
-        "details": {"total_seconds": total_seconds},
+        "details": {
+            "session_seconds": session_seconds,
+            "active_seconds": active_seconds,
+            "duty_completed": duty_completed,
+        },
         "timestamp": now,
     })
-    
+
     return {
         "status": "success",
         "message": "Session ended",
-        "total_seconds": total_seconds,
-        "total_hours": round(total_seconds / 3600, 2)
+        "total_active_seconds": active_seconds,
+        "total_session_seconds": session_seconds,
+        "active_hours": round(active_seconds / 3600, 2),
+        "total_hours": round(session_seconds / 3600, 2),
     }
 
 
@@ -726,13 +747,34 @@ async def get_session(
     session_id: str,
     db=Depends(get_db)
 ):
-    """Get session details."""
+    """Get session details, plus today's cumulative active seconds.
+
+    The work timer must survive logout/re-login: a fresh session starts at
+    0 active seconds, but the employee should resume where their DAY left
+    off. So we sum `total_active_seconds` across every session the employee
+    had today (including this one) and return it as `day_active_seconds`.
+    """
     session = await db["hw_sessions"].find_one({"_id": ObjectId(session_id)})
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    
+
+    now = get_now()
+    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    day_end = day_start + timedelta(days=1)
+
+    day_sessions = await db["hw_sessions"].find({
+        "employee_db_id": session["employee_db_id"],
+        "login_time": {"$gte": day_start, "$lt": day_end},
+    }).to_list(100)
+
+    day_active_seconds = sum(s.get("total_active_seconds", 0) for s in day_sessions)
+
     session["_id"] = str(session["_id"])
-    return {"status": "success", "session": session}
+    return {
+        "status": "success",
+        "session": session,
+        "day_active_seconds": day_active_seconds,
+    }
 
 
 @router.get("/schedule")
