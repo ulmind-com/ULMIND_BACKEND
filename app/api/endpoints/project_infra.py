@@ -69,17 +69,12 @@ async def create_project_infra(
         "profile_photo": current_admin.profile_photo.url if getattr(current_admin, "profile_photo", None) and hasattr(current_admin.profile_photo, "url") else (current_admin.profile_photo.get("url") if isinstance(getattr(current_admin, "profile_photo", None), dict) else None)
     }
 
-    doc = {
-        "project_name": payload.project_name,
-        "email_used": payload.email_used,
-        "frontend_url": payload.frontend_url,
-        "backend_url": payload.backend_url,
-        "database_url": payload.database_url,
-        "server_location": payload.server_location,
+    doc = payload.model_dump()
+    doc.update({
         "created_by": user_data,
         "created_at": now,
         "updated_at": now,
-    }
+    })
 
     result = await db[COLLECTION].insert_one(doc)
     created = await db[COLLECTION].find_one({"_id": result.inserted_id})
