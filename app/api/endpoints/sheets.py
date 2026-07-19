@@ -87,6 +87,14 @@ async def bulk_add_rows(sheet_id: str, rows: List[SheetRowCreate], db=Depends(ge
 @router.get("/{sheet_id}/rows", response_model=List[Dict[str, Any]])
 async def get_rows(sheet_id: str, db=Depends(get_db)):
     rows = await db.sheet_rows.find({"sheet_id": sheet_id}).sort("created_at", 1).to_list(1000)
+    # Sort by sl_no numerically if the field exists in the data
+    def _sl_no_key(row):
+        try:
+            return int(float(row.get("data", {}).get("sl_no", 0) or 0))
+        except (ValueError, TypeError):
+            return 0
+    if rows and rows[0].get("data", {}).get("sl_no") is not None:
+        rows.sort(key=_sl_no_key)
     return [serialize_mongo(r) for r in rows]
 
 @router.put("/{sheet_id}/rows/{row_id}", response_model=Dict[str, Any])
