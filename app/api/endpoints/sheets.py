@@ -86,7 +86,7 @@ async def bulk_add_rows(sheet_id: str, rows: List[SheetRowCreate], db=Depends(ge
 
 @router.get("/{sheet_id}/rows", response_model=List[Dict[str, Any]])
 async def get_rows(sheet_id: str, db=Depends(get_db)):
-    rows = await db.sheet_rows.find({"sheet_id": sheet_id}).to_list(1000)
+    rows = await db.sheet_rows.find({"sheet_id": sheet_id}).sort("created_at", 1).to_list(1000)
     return [serialize_mongo(r) for r in rows]
 
 @router.put("/{sheet_id}/rows/{row_id}", response_model=Dict[str, Any])
