@@ -87,11 +87,6 @@ async def bulk_add_rows(sheet_id: str, rows: List[SheetRowCreate], db=Depends(ge
 @router.get("/{sheet_id}/rows", response_model=List[Dict[str, Any]])
 async def get_rows(sheet_id: str, db=Depends(get_db)):
     rows = await db.sheet_rows.find({"sheet_id": sheet_id}).sort("created_at", 1).to_list(1000)
-    # Filter out completely empty rows (no meaningful data)
-    def _is_empty_row(row):
-        data = row.get("data", {})
-        return all(v is None or v == "" or v == 0 for v in data.values())
-    rows = [r for r in rows if not _is_empty_row(r)]
     # Sort by sl_no numerically if the field exists — empty sl_no goes to bottom
     def _sl_no_key(row):
         val = row.get("data", {}).get("sl_no")
