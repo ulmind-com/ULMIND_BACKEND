@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from typing import List
+from typing import List, Dict, Any
 from app.core.datetime_utils import get_now
 from bson import ObjectId
 from app.db.database import get_db
@@ -45,6 +45,35 @@ async def create_client(client_in: ClientCreate, db=Depends(get_db)):
     )
     
     return created_client
+
+@router.put("/{id}", response_model=ClientResponse)
+async def update_client(id: str, data: Dict[str, Any], db=Depends(get_db)):
+    """Edit a client's core details. Only the keys sent are written, and the
+    CRM sub-collections (crm_data) are never touched here so an edit can't
+    wipe notes/contracts/etc."""
+    try:
+        obj_id = ObjectId(id)
+    except:
+        raise HTTPException(status_code=400, detail="Invalid ID")
+
+    editable = {
+        "companyName", "contactName", "contactEmail", "phone", "industry",
+        "assigned_manager", "revenue", "lifetime_value", "address",
+        "social_links", "status",
+    }
+    changes = {k: v for k, v in data.items() if k in editable}
+    if not changes:
+        raise HTTPException(status_code=400, detail="No editable fields provided")
+    changes["updated_at"] = get_now()
+
+    result = await db["clients"].find_one_and_update(
+        {"_id": obj_id},
+        {"$set": changes},
+        return_document=True
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return result
 
 @router.put("/{id}/stage", response_model=ClientResponse)
 async def update_client_stage(id: str, stage: str, db=Depends(get_db)):
@@ -148,6 +177,28 @@ async def update_client_crm_data(id: str, field: str, item_id: str, data: Dict[s
     result = await db["clients"].find_one_and_update(
         {"_id": obj_id, f"crm_data.{field}.id": item_id},
         {"$set": {f"crm_data.{field}.$": data, "updated_at": get_now()}},
+        return_document=True
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="Client or CRM item not found")
+    return result
+
+@router.delete("/{id}/crm_data/{field}/{item_id}", response_model=ClientResponse)
+async def delete_client_crm_data(id: str, field: str, item_id: str, db=Depends(get_db)):
+    """Remove a single item from one of the client's CRM sub-lists. Scoped by
+    item id so only that entry is pulled — the rest of the list is untouched."""
+    try:
+        obj_id = ObjectId(id)
+    except:
+        raise HTTPException(status_code=400, detail="Invalid ID")
+
+    valid_fields = ["notes", "contracts", "contacts", "projects", "invoices", "documents", "meetings", "activity_logs"]
+    if field not in valid_fields:
+        raise HTTPException(status_code=400, detail="Invalid CRM data field")
+
+    result = await db["clients"].find_one_and_update(
+        {"_id": obj_id, f"crm_data.{field}.id": item_id},
+        {"$pull": {f"crm_data.{field}": {"id": item_id}}, "$set": {"updated_at": get_now()}},
         return_document=True
     )
     if not result:

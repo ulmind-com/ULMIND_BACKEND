@@ -5,6 +5,35 @@ from app.services.ai_notification_service import ai_notification_service
 from app.core.datetime_utils import get_now
 import uuid
 
+# Where a notification should take you. The old code built
+# "/admin/{resource_type}/{id}" which produced dead URLs like
+# "/admin/crm_documents/<id>" — no such route exists in the SPA.
+# `{id}` is substituted when the route can show a single record.
+RESOURCE_ROUTES = {
+    "clients": "/admin/crm/clients/{id}",
+    "crm_activities": "/admin/crm/activities",
+    "crm_meetings": "/admin/crm/meetings",
+    "crm_contracts": "/admin/crm/contracts",
+    "crm_documents": "/admin/crm/documents",
+    "invoices": "/admin/finance/invoices",
+    "payments": "/admin/finance/payments",
+    "expenses": "/admin/finance/expenses",
+    "projects": "/admin/projects/{id}",
+    "tasks": "/admin/projects/tasks",
+    "employees": "/admin/team",
+    "offers": "/admin/offers",
+    "delete_requests": "/admin/delete-requests",
+}
+
+
+def build_notification_link(resource_type: str, resource_id: str) -> str:
+    """Resolve an in-app route for the event, falling back to the
+    notification dashboard rather than a URL that 404s."""
+    template = RESOURCE_ROUTES.get(resource_type)
+    if not template:
+        return "/admin/notifications"
+    return template.format(id=resource_id) if "{id}" in template else template
+
 async def trigger_system_event(
     event_type: str, 
     resource_type: str, 
@@ -89,13 +118,18 @@ async def trigger_system_event(
     notif_doc = {
         "user_id": "global", # Or specific admin user ID
         "type": event_type,
-        "title": ai_result.get("title", f"New {event_type}"),
-        "message": ai_result.get("message", "System event occurred."),
-        "priority": ai_result.get("priority", "Info"),
-        "category": ai_result.get("category", "System"),
+        "title": ai_result.get("title") or f"New {event_type}",
+        "message": ai_result.get("message") or "System event occurred.",
+        "priority": ai_result.get("priority") or "Medium",
+        "category": ai_result.get("category") or "System",
         "recommended_action": ai_result.get("recommended_action"),
+        # Lets the UI mark which alerts were genuinely AI-written.
+        "ai_generated": bool(ai_result.get("ai_generated")),
+        "actor": user_email,
+        "resource_type": resource_type,
+        "resource_id": resource_id,
         "is_read": False,
-        "link": f"/admin/{resource_type}/{resource_id}",
+        "link": build_notification_link(resource_type, resource_id),
         "created_at": now
     }
     
