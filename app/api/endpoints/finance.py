@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from typing import List
+from typing import List, Optional
 from app.core.datetime_utils import get_now
 from bson import ObjectId
 from app.db.database import get_db
@@ -19,8 +19,9 @@ def _parse_id(id: str) -> ObjectId:
 # ── INVOICES ──
 
 @router.get("/invoices", response_model=List[InvoiceInDB])
-async def list_invoices(db=Depends(get_db), _admin=Depends(get_current_active_admin)):
-    invoices = await db["invoices"].find({}).to_list(length=1000)
+async def list_invoices(client_id: Optional[str] = None, db=Depends(get_db), _admin=Depends(get_current_active_admin)):
+    query = {"client_id": client_id} if client_id else {}
+    invoices = await db["invoices"].find(query).to_list(length=1000)
     return invoices
 
 @router.post("/invoices", response_model=InvoiceInDB, status_code=201)
@@ -51,8 +52,9 @@ async def create_invoice(invoice_in: InvoiceCreate, db=Depends(get_db), _admin=D
 # ── PAYMENTS ──
 
 @router.get("/payments", response_model=List[PaymentInDB])
-async def list_payments(db=Depends(get_db), _admin=Depends(get_current_active_admin)):
-    payments = await db["payments"].find({}).to_list(length=1000)
+async def list_payments(client_id: Optional[str] = None, db=Depends(get_db), _admin=Depends(get_current_active_admin)):
+    query = {"client_id": client_id} if client_id else {}
+    payments = await db["payments"].find(query).to_list(length=1000)
     return payments
 
 @router.post("/payments", response_model=PaymentInDB, status_code=201)

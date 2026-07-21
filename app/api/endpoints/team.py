@@ -20,6 +20,16 @@ def _parse_id(id: str) -> ObjectId:
         raise HTTPException(status_code=400, detail="Invalid admin ID format")
 
 
+def _is_super_admin(admin) -> bool:
+    """Roles are stored inconsistently (both "super_admin" and "SUPER_ADMIN"
+    exist in the collection), so every comparison must be case-insensitive."""
+    return (getattr(admin, "role", "") or "").lower() == "super_admin"
+
+
+def _same_role(a: Optional[str], b: Optional[str]) -> bool:
+    return (a or "").lower() == (b or "").lower()
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  PUBLIC ENDPOINTS
 # ══════════════════════════════════════════════════════════════════════════════
@@ -75,15 +85,23 @@ class CreateTeamMemberReq(BaseModel):
 
 @router.post("/", response_model=AdminResponse, status_code=201)
 async def create_team_member(
-    data: CreateTeamMemberReq, 
+    data: CreateTeamMemberReq,
     db=Depends(get_db),
-    _admin=Depends(get_current_active_admin)
+    current_admin=Depends(get_current_active_admin)
 ):
     """Add a new staff member (Admin/Editor) to the system."""
     existing = await db["admins"].find_one({"email": data.email})
     if existing:
         raise HTTPException(status_code=409, detail="User with this email already exists")
-        
+
+    # Closes the obvious way around the update rule: without this a non-super
+    # admin could simply create a brand new super_admin account.
+    if _same_role(data.role, "super_admin") and not _is_super_admin(current_admin):
+        raise HTTPException(
+            status_code=403,
+            detail="Only a super admin can grant the super admin role",
+        )
+
     hashed_password = get_password_hash(data.initial_password)
     now = get_now()
     
@@ -119,15 +137,38 @@ async def update_team_member(
     id: str,
     member_in: AdminUpdate,
     db=Depends(get_db),
-    _admin=Depends(get_current_active_admin)
+    current_admin=Depends(get_current_active_admin)
 ):
-    """Update a team member's role, status, etc."""
+    """Update a team member. Everyone with admin access may edit names,
+    positions and status; only a super admin may change the access role.
+
+    This is enforced here and not just hidden in the UI — without it any
+    signed-in user could promote themselves to super_admin with one request.
+    """
     update_data = member_in.model_dump(exclude_unset=True)
     if not update_data:
         raise HTTPException(status_code=400, detail="No data to update")
-        
+
+    target = await db["admins"].find_one({"_id": _parse_id(id)})
+    if not target:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    if "role" in update_data:
+        if _same_role(update_data["role"], target.get("role")):
+            # Unchanged role — drop it so a normal edit isn't blocked just
+            # because the form echoed the existing value back.
+            update_data.pop("role")
+        elif not _is_super_admin(current_admin):
+            raise HTTPException(
+                status_code=403,
+                detail="Only a super admin can change a member's access role",
+            )
+
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No data to update")
+
     update_data["updated_at"] = get_now()
-    
+
     result = await db["admins"].find_one_and_update(
         {"_id": _parse_id(id)},
         {"$set": update_data},
