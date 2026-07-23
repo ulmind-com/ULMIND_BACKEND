@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import List, Optional
 from bson import ObjectId
 import logging
+import uuid
 
 from app.db.database import get_db
 from app.api.deps import get_current_active_admin
@@ -20,6 +21,15 @@ def _parse_id(id: str) -> ObjectId:
         return ObjectId(id)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid ID format")
+
+def _with_section_ids(sections: Optional[list]) -> list:
+    """Ensure every custom section has a stable id, generating one if missing."""
+    result = []
+    for section in sections or []:
+        if not section.get("id"):
+            section = {**section, "id": str(uuid.uuid4())}
+        result.append(section)
+    return result
 
 @router.get("", response_model=ProjectInfraListResponse)
 async def list_project_infra(
@@ -70,6 +80,7 @@ async def create_project_infra(
     }
 
     doc = payload.model_dump()
+    doc["custom_sections"] = _with_section_ids(doc.get("custom_sections"))
     doc.update({
         "created_by": user_data,
         "created_at": now,
@@ -96,6 +107,9 @@ async def update_project_infra(
     update_data = payload.model_dump(exclude_unset=True)
     if not update_data:
         raise HTTPException(status_code=400, detail="No fields to update")
+
+    if "custom_sections" in update_data:
+        update_data["custom_sections"] = _with_section_ids(update_data["custom_sections"])
 
     # update user_data just in case admin updates it, we track who last updated it but we keep it as created_by or maybe rename to updated_by in UI.
     # For now we'll just update the created_by to the person who did the last edit so the UI shows who last touched it, as per requirements "er ke kakhon store koreche ter profile and name".
