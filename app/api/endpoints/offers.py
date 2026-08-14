@@ -74,6 +74,9 @@ async def create_offer(
     start_time: Optional[datetime] = Form(None),
     end_time: Optional[datetime] = Form(None),
     is_active: bool = Form(default=True),
+    color1: Optional[str] = Form(None),
+    color2: Optional[str] = Form(None),
+    text_color: Optional[str] = Form(None),
     image: Optional[UploadFile] = File(None),
     db=Depends(get_db),
     _admin=Depends(get_current_active_admin)
@@ -91,6 +94,9 @@ async def create_offer(
         "start_time": start_time,
         "end_time": end_time,
         "is_active": is_active,
+        "color1": color1,
+        "color2": color2,
+        "text_color": text_color,
         "image": image_info,
         "created_at": now,
         "updated_at": now

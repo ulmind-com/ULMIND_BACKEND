@@ -16,6 +16,9 @@ class OfferBase(BaseModel):
     start_time: Optional[datetime] = Field(None, description="Scheduled start time (IST)")
     end_time: Optional[datetime] = Field(None, description="Scheduled end time (IST)")
     is_active: bool = Field(default=True, description="Manual toggle for visibility")
+    color1: Optional[str] = Field(None, description="Gradient start color")
+    color2: Optional[str] = Field(None, description="Gradient end color")
+    text_color: Optional[str] = Field(None, description="Text color")
 
 class OfferCreate(OfferBase):
     image: Optional[ImageInfo] = None
@@ -26,6 +29,9 @@ class OfferUpdate(BaseModel):
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     is_active: Optional[bool] = None
+    color1: Optional[str] = None
+    color2: Optional[str] = None
+    text_color: Optional[str] = None
 
 class OfferResponse(OfferBase):
     id: PyObjectId = Field(alias="_id")
