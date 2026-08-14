@@ -95,6 +95,34 @@ class PortfolioProjectResponse(PortfolioProjectBase):
     updated_at: datetime = Field(alias="updatedAt", default_factory=get_now)
     model_config = ConfigDict(populate_by_name=True)
 
+# ─── FESTIVE BANNER (singleton hero decoration config) ─────────────────────────
+
+class FestiveBannerBase(BaseModel):
+    enabled: bool = Field(default=False, description="Master on/off switch")
+    text: str = Field(default="Celebrating 80th Independence Day", description="Badge text shown in the hero")
+    color1: str = Field(default="#FF9933", description="Left glow colour (hex)")
+    color2: str = Field(default="#138808", description="Right glow colour (hex)")
+    intensity: float = Field(default=0.48, ge=0.0, le=1.0, description="Glow strength 0-1 (light mode)")
+    showChakra: bool = Field(default=True, description="Show the spinning Ashoka Chakra accent")
+    startAt: Optional[datetime] = Field(default=None, description="Show from this moment (UTC). Null = no lower bound")
+    endAt: Optional[datetime] = Field(default=None, description="Hide after this moment (UTC). Null = no upper bound")
+
+class FestiveBannerUpdate(BaseModel):
+    enabled: Optional[bool] = None
+    text: Optional[str] = None
+    color1: Optional[str] = None
+    color2: Optional[str] = None
+    intensity: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    showChakra: Optional[bool] = None
+    startAt: Optional[datetime] = None
+    endAt: Optional[datetime] = None
+
+class FestiveBannerResponse(FestiveBannerBase):
+    # `active` is computed server-side: enabled AND now within [startAt, endAt].
+    active: bool = Field(default=False, description="Whether the banner should render right now")
+    model_config = ConfigDict(populate_by_name=True)
+
+
 # Rebuild models
 WebsiteStatBase.model_rebuild()
 WebsiteStatResponse.model_rebuild()

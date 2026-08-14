@@ -9,6 +9,7 @@ from app.schemas.website_content import (
     WebsiteStatCreate, WebsiteStatUpdate, WebsiteStatResponse,
     TestimonialCreate, TestimonialUpdate, TestimonialResponse,
     PortfolioProjectCreate, PortfolioProjectUpdate, PortfolioProjectResponse,
+    FestiveBannerBase, FestiveBannerUpdate, FestiveBannerResponse,
     ImageInfo
 )
 from app.api.deps import get_current_active_admin
@@ -20,6 +21,8 @@ logger = logging.getLogger(__name__)
 STATS_COLLECTION = "website_stats"
 TESTIMONIALS_COLLECTION = "testimonials"
 PROJECTS_COLLECTION = "portfolio_projects"
+FESTIVE_COLLECTION = "festive_banner"
+FESTIVE_KEY = "singleton"
 
 def _parse_id(id: str) -> ObjectId:
     try:
@@ -227,6 +230,58 @@ async def delete_project(
         
     if existing.get("image") and existing["image"].get("public_id"):
         await delete_image(existing["image"]["public_id"])
-        
+
     await db[PROJECTS_COLLECTION].delete_one({"_id": obj_id})
     return {"status": "success"}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  FESTIVE BANNER (singleton hero decoration config)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _as_utc(dt):
+    """Return a tz-aware UTC datetime, treating naive values as UTC."""
+    if dt is None:
+        return None
+    from datetime import timezone
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+def _compute_active(cfg: dict) -> bool:
+    if not cfg.get("enabled"):
+        return False
+    now = _as_utc(get_now())
+    start = _as_utc(cfg.get("startAt"))
+    end = _as_utc(cfg.get("endAt"))
+    if start and now < start:
+        return False
+    if end and now > end:
+        return False
+    return True
+
+@router.get("/festive-banner", response_model=FestiveBannerResponse)
+async def get_festive_banner(db=Depends(get_db)):
+    """Public: current festive-banner config plus a server-computed `active` flag."""
+    cfg = await db[FESTIVE_COLLECTION].find_one({"key": FESTIVE_KEY})
+    base = FestiveBannerBase().model_dump()  # sensible defaults
+    if cfg:
+        base.update({k: cfg[k] for k in base.keys() if k in cfg})
+    return {**base, "active": _compute_active(base)}
+
+@router.put("/festive-banner", response_model=FestiveBannerResponse)
+async def update_festive_banner(
+    cfg_in: FestiveBannerUpdate,
+    db=Depends(get_db),
+    _admin=Depends(get_current_active_admin)
+):
+    """Admin: upsert the singleton festive-banner config."""
+    update_data = cfg_in.model_dump(exclude_unset=True)
+    update_data["updated_at"] = get_now()
+    await db[FESTIVE_COLLECTION].update_one(
+        {"key": FESTIVE_KEY},
+        {"$set": update_data, "$setOnInsert": {"key": FESTIVE_KEY}},
+        upsert=True,
+    )
+    cfg = await db[FESTIVE_COLLECTION].find_one({"key": FESTIVE_KEY})
+    base = FestiveBannerBase().model_dump()
+    base.update({k: cfg[k] for k in base.keys() if k in cfg})
+    return {**base, "active": _compute_active(base)}
