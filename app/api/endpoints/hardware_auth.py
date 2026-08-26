@@ -1,8 +1,8 @@
 """
-Hardware Auth — Employee CRUD + QR-based Login
-================================================
+Hardware Auth — Employee CRUD + QR-based Login + Manual Login
+===============================================================
 Endpoints for managing employees, generating QR codes,
-and hardware-style QR scan authentication.
+hardware-style QR scan authentication, and manual email/password login.
 """
 
 import json
@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from bson import ObjectId
 from app.db.database import get_db
 from app.core.config import settings
-from app.core.security import create_access_token
+from app.core.security import create_access_token, verify_password
 from app.core.datetime_utils import get_now
 from app.api.deps import get_current_admin
 
@@ -621,6 +621,237 @@ async def qr_login(
         "face_verified": face_verified,
         "session_schedule": schedule,
         "message": "QR Login successful! Morning session started."
+    }
+
+
+@router.post("/auth/manual-login")
+async def manual_login(
+    request: Request,
+    login_data: dict,
+    db=Depends(get_db)
+):
+    """
+    Manual email/password login for hardware monitoring.
+    Alternative to QR scanning — employees can type their email and
+    password (the same credentials as admin panel) to clock in.
+    """
+    email = (login_data.get("email") or "").strip().lower()
+    password = login_data.get("password") or ""
+
+    if not email or not password:
+        raise HTTPException(status_code=400, detail="Email and password are required")
+
+    # 1. Verify credentials against the admins collection
+    admin_user = await db["admins"].find_one({"email": email})
+    if not admin_user:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    if not verify_password(password, admin_user["password"]):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    # 2. Find the matching HW employee by email
+    employee = await db["hw_employees"].find_one({"email": email})
+    if not employee:
+        raise HTTPException(
+            status_code=404,
+            detail="No hardware employee profile found for this email. Contact your administrator."
+        )
+
+    if employee.get("status") != "Active":
+        raise HTTPException(status_code=403, detail="Employee account is not active")
+
+    # 3. Create session (same logic as qr-login)
+    now = get_now()
+    schedule = _get_duty_schedule()
+
+    # Generate admin token for seamless dashboard access
+    admin_token = create_access_token(data={"id": str(admin_user["_id"])})
+
+    # Check for existing active session
+    existing_session = await db["hw_sessions"].find_one({
+        "employee_db_id": str(employee["_id"]),
+        "status": {"$in": ["active", "lunch_break"]}
+    })
+
+    if existing_session:
+        # Returning from lunch break
+        if existing_session.get("status") == "lunch_break":
+            await db["hw_sessions"].update_one(
+                {"_id": existing_session["_id"]},
+                {"$set": {
+                    "status": "active",
+                    "lunch_end": now,
+                    "afternoon_start": now,
+                }}
+            )
+
+            token = create_access_token(data={
+                "id": str(employee["_id"]),
+                "email": employee["email"],
+                "role": "hw_employee",
+                "session_id": str(existing_session["_id"]),
+                "type": "hw_session"
+            })
+
+            emp_safe = {**_sanitize_employee(employee), "face_verified": None}
+
+            await db["hw_live_status"].update_one(
+                {"employee_id": employee["employee_id"]},
+                {"$set": {
+                    "employee_id": employee["employee_id"],
+                    "employee_db_id": str(employee["_id"]),
+                    "status": "online",
+                    "camera_state": "on",
+                    "face_detected": True,
+                    "last_heartbeat": now,
+                    "is_online": True,
+                    "updated_at": now
+                }},
+                upsert=True
+            )
+
+            return {
+                "status": "success",
+                "token": token,
+                "admin_token": admin_token,
+                "session_id": str(existing_session["_id"]),
+                "employee": emp_safe,
+                "session_start": existing_session["login_time"].replace(tzinfo=timezone.utc).isoformat() if existing_session["login_time"].tzinfo is None else existing_session["login_time"].isoformat(),
+                "session_type": "afternoon",
+                "session_schedule": schedule,
+                "message": "Welcome back from lunch! Afternoon session started."
+            }
+        else:
+            # Already active session
+            token = create_access_token(data={
+                "id": str(employee["_id"]),
+                "email": employee["email"],
+                "role": "hw_employee",
+                "session_id": str(existing_session["_id"]),
+                "type": "hw_session"
+            })
+
+            emp_safe = {**_sanitize_employee(employee), "face_verified": None}
+
+            await db["hw_live_status"].update_one(
+                {"employee_id": employee["employee_id"]},
+                {"$set": {
+                    "employee_id": employee["employee_id"],
+                    "employee_db_id": str(employee["_id"]),
+                    "status": "online",
+                    "camera_state": "on",
+                    "face_detected": True,
+                    "last_heartbeat": now,
+                    "is_online": True,
+                    "updated_at": now
+                }},
+                upsert=True
+            )
+
+            return {
+                "status": "success",
+                "token": token,
+                "admin_token": admin_token,
+                "session_id": str(existing_session["_id"]),
+                "employee": emp_safe,
+                "session_start": existing_session["login_time"].replace(tzinfo=timezone.utc).isoformat() if existing_session["login_time"].tzinfo is None else existing_session["login_time"].isoformat(),
+                "session_type": "existing",
+                "session_schedule": schedule,
+                "message": "Session already active."
+            }
+
+    # Create new session
+    session_doc = {
+        "employee_id": employee["employee_id"],
+        "employee_db_id": str(employee["_id"]),
+        "employee_name": employee["name"],
+        "status": "active",
+        "login_time": now,
+        "morning_start": now,
+        "morning_end": None,
+        "lunch_start": None,
+        "lunch_end": None,
+        "afternoon_start": None,
+        "afternoon_end": None,
+        "logout_time": None,
+        "total_active_seconds": 0,
+        "total_idle_seconds": 0,
+        "total_break_seconds": 0,
+        "total_absent_seconds": 0,
+        "face_present_seconds": 0,
+        "mobile_detected_count": 0,
+        "mobile_detected_seconds": 0,
+        "sleeping_detected_count": 0,
+        "sleeping_detected_seconds": 0,
+        "camera_covered_seconds": 0,
+        "looking_away_seconds": 0,
+        "device_info": login_data.get("device_info"),
+        "ip_address": login_data.get("ip_address"),
+        "user_agent": login_data.get("user_agent"),
+        "face_verified": None,
+        "login_method": "manual",
+        "created_at": now,
+    }
+
+    session_result = await db["hw_sessions"].insert_one(session_doc)
+    session_id = str(session_result.inserted_id)
+
+    # Log session start event
+    await db["hw_monitoring_events"].insert_one({
+        "session_id": session_id,
+        "employee_id": employee["employee_id"],
+        "employee_db_id": str(employee["_id"]),
+        "event_type": "session_start",
+        "confidence": 1.0,
+        "severity": "info",
+        "details": {"login_method": "manual", "device_info": login_data.get("device_info")},
+        "timestamp": now,
+    })
+
+    # Update live status
+    await db["hw_live_status"].update_one(
+        {"employee_id": employee["employee_id"]},
+        {"$set": {
+            "employee_id": employee["employee_id"],
+            "employee_db_id": str(employee["_id"]),
+            "status": "online",
+            "camera_state": "on",
+            "face_detected": True,
+            "last_heartbeat": now,
+            "is_online": True,
+            "updated_at": now
+        }},
+        upsert=True
+    )
+
+    # Update employee session count
+    await db["hw_employees"].update_one(
+        {"_id": employee["_id"]},
+        {"$inc": {"total_sessions": 1}, "$set": {"updated_at": now}}
+    )
+
+    # Generate JWT token
+    token = create_access_token(data={
+        "id": str(employee["_id"]),
+        "email": employee["email"],
+        "role": "hw_employee",
+        "session_id": session_id,
+        "type": "hw_session"
+    })
+
+    emp_safe = {**_sanitize_employee(employee), "face_verified": None}
+
+    return {
+        "status": "success",
+        "token": token,
+        "admin_token": admin_token,
+        "session_id": session_id,
+        "employee": emp_safe,
+        "session_start": now.isoformat(),
+        "session_type": "morning",
+        "face_verified": None,
+        "session_schedule": schedule,
+        "message": "Manual login successful! Morning session started."
     }
 
 
