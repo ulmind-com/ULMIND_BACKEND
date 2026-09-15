@@ -31,7 +31,7 @@ EMPLOYEES = [
     {"employee_id": "FOU-UL-002", "full_name": "Arnab Senapati", "email": "arnab.senapati@ulmind.com", "position": "Co-Founder, MD & CEO"},
     {"employee_id": "FOU-UL-003", "full_name": "Sagnik Mondal", "email": "sagnik.mondal@ulmind.com", "position": "Co-Founder & COO"},
     {"employee_id": "FOU-UL-004", "full_name": "Samiran Samanta", "email": "samiran.samanta@ulmind.com", "position": "Co-Founder & CTO"},
-    {"employee_id": "FOU-UL-005", "full_name": "Tirtha Ghosh", "email": "tirtha.ghosh@ulmind.com", "position": "Co-Founder & CTO"},
+
     {"employee_id": "FOU-UL-006", "full_name": "Swastika Roy", "email": "swastika.roy@ulmind.com", "position": "Co-Founder & CHRO"},
 ]
 

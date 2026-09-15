@@ -16,7 +16,7 @@ async def update_phones():
         "Soumyajit": "7908288829",
         "Arnab": "7384708532",
         "Sagnik": "8389802690",
-        "Tirtha": "8348267151",
+
         "Swastika": "8092681269"
     }
     
