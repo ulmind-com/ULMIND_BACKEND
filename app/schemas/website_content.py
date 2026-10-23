@@ -33,15 +33,26 @@ class WebsiteStatResponse(WebsiteStatBase):
 
 # ─── TESTIMONIALS (REVIEWS) ────────────────────────────────────────────────────
 
+class TestimonialMetric(BaseModel):
+    label: str = Field(..., description="Metric label e.g. 'Quality'")
+    score: str = Field(..., description="Metric score e.g. '5.0'")
+
 class TestimonialBase(BaseModel):
     name: str = Field(..., description="Client Name")
     username: str = Field(..., description="Client sub-heading or designation")
     body: str = Field(..., description="Review content")
     rating: int = Field(default=5, description="Star rating 1-5")
     order: int = Field(default=0, description="Order to display")
+    title: Optional[str] = Field(default=None, description="Card headline")
+    location: Optional[str] = Field(default=None, description="Location e.g. 'Calgary, Canada'")
+    flag: Optional[str] = Field(default=None, description="Country flag emoji")
+    metrics: Optional[List[TestimonialMetric]] = Field(default=None, description="Score metrics (Quality, Cost, ...)")
+    source: Optional[str] = Field(default=None, description="Review source e.g. 'Google', 'Clutch', 'Trustpilot'")
 
 class TestimonialCreate(TestimonialBase):
     img: Optional[ImageInfo] = None
+    companyLogo: Optional[ImageInfo] = None
+    sourceLogo: Optional[ImageInfo] = None
 
 class TestimonialUpdate(BaseModel):
     name: Optional[str] = None
@@ -49,10 +60,20 @@ class TestimonialUpdate(BaseModel):
     body: Optional[str] = None
     rating: Optional[int] = None
     order: Optional[int] = None
+    title: Optional[str] = None
+    location: Optional[str] = None
+    flag: Optional[str] = None
+    metrics: Optional[List[TestimonialMetric]] = None
+    source: Optional[str] = None
+    img: Optional[ImageInfo] = None
+    companyLogo: Optional[ImageInfo] = None
+    sourceLogo: Optional[ImageInfo] = None
 
 class TestimonialResponse(TestimonialBase):
     id: PyObjectId = Field(alias="_id")
     img: Optional[ImageInfo] = None
+    companyLogo: Optional[ImageInfo] = None
+    sourceLogo: Optional[ImageInfo] = None
     created_at: datetime = Field(alias="createdAt", default_factory=get_now)
     updated_at: datetime = Field(alias="updatedAt", default_factory=get_now)
     model_config = ConfigDict(populate_by_name=True)
