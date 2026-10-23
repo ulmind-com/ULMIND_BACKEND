@@ -11,7 +11,6 @@ ADMIN_EMAILS = [
     'sagnik.mondal@ulmind.com',
 
     'swastika.roy@ulmind.in',
-    'roni.routh@ulmind.in',
 ]
 
 
