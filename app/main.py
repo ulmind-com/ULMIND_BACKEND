@@ -1,6 +1,6 @@
 import logging
 import traceback
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Depends
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -9,7 +9,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from contextlib import asynccontextmanager
 from app.core.config import settings
-from app.db.database import connect_to_mongo, close_mongo_connection
+from app.db.database import connect_to_mongo, close_mongo_connection, get_db
 from app.api.endpoints import auth, client, project, team, stats, track, page_analytics, merchandise, user_management, offers, sheets, ai, activity, finance, notification, task, crm_enterprise, pm_enterprise, team_enterprise, audit, project_env, delete_requests, lead_scraper, env_store, manager_tracking, manager_tasks, cron_monitor, website_content, hardware_auth, hardware_monitor, hardware_analytics, project_infra
 from app.api import websockets
 
@@ -108,3 +108,11 @@ app.include_router(hardware_analytics.router, prefix=f"{settings.API_V1_STR}/hw/
 @app.get("/", tags=["Health"])
 async def health_check():
     return {"status": "success", "message": "Server is healthy"}
+
+@app.get("/rss.xml", include_in_schema=False)
+@app.get("/blogs/rss.xml", include_in_schema=False)
+@app.get("/feed", include_in_schema=False)
+@app.get("/feed.xml", include_in_schema=False)
+async def top_level_rss_feed(db=Depends(get_db)):
+    return await website_content.blogs_rss_feed(db=db)
+

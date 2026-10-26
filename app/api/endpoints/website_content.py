@@ -372,7 +372,13 @@ def _strip_md(text: str, max_len: int = 500) -> str:
         text = text[:max_len].rsplit(" ", 1)[0] + "…"
     return text
 
+def _cdata(text: str) -> str:
+    """Safely wrap text in CDATA, replacing nested ]]> sequences."""
+    safe = str(text or "").replace("]]>", "]]]]><![CDATA[>")
+    return f"<![CDATA[{safe}]]>"
+
 @router.get("/blogs/rss.xml", response_class=Response)
+@router.get("/rss.xml", response_class=Response)
 async def blogs_rss_feed(db=Depends(get_db)):
     """Public: RSS 2.0 feed of published blog posts for LinkedIn / RSS readers."""
     blogs = await (
@@ -388,44 +394,58 @@ async def blogs_rss_feed(db=Depends(get_db)):
         slug = b.get("slug", "")
         title = xml_escape(b.get("title", ""))
         link = f"{SITE_URL}/blogs/{slug}"
-        desc = xml_escape(
-            b.get("excerpt") or _strip_md(b.get("content", ""))
-        )
-        author = xml_escape(b.get("author", "ULMiND"))
+        desc = b.get("excerpt") or _strip_md(b.get("content", ""))
+        raw_author = b.get("author", "ULMIND")
         pub_date = _rfc822(b.get("createdAt") or b.get("created_at", ""))
-        category = xml_escape(b.get("category", ""))
+        category = b.get("category", "Technology")
         cover = b.get("coverImage", {}).get("url", "")
 
-        enclosure = ""
+        mime_type = "image/jpeg"
+        if cover.lower().endswith(".png"):
+            mime_type = "image/png"
+        elif cover.lower().endswith(".webp"):
+            mime_type = "image/webp"
+
+        media_blocks = []
         if cover:
-            enclosure = f'<enclosure url="{xml_escape(cover)}" type="image/jpeg" length="0"/>'
+            safe_cover = xml_escape(cover)
+            media_blocks.append(f'<enclosure url="{safe_cover}" type="{mime_type}" length="102400"/>')
+            media_blocks.append(f'<media:content url="{safe_cover}" medium="image" type="{mime_type}"/>')
+            media_blocks.append(f'<media:thumbnail url="{safe_cover}"/>')
+
+        media_xml = ("\n      " + "\n      ".join(media_blocks)) if media_blocks else ""
 
         items_xml.append(f"""    <item>
       <title>{title}</title>
       <link>{link}</link>
-      <description>{desc}</description>
-      <author>{author}</author>
-      <pubDate>{pub_date}</pubDate>
-      <category>{category}</category>
       <guid isPermaLink="true">{link}</guid>
-      {enclosure}
+      <pubDate>{pub_date}</pubDate>
+      <dc:creator>{_cdata(raw_author)}</dc:creator>
+      <author>contact@ulmind.com ({xml_escape(raw_author)})</author>
+      <category>{_cdata(category)}</category>
+      <description>{_cdata(desc)}</description>
+      <content:encoded>{_cdata(f"<p>{desc}</p>")}</content:encoded>{media_xml}
     </item>""")
 
     channel_items = "\n".join(items_xml)
     now_rfc = _rfc822(datetime.now(timezone.utc))
 
     rss_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+<rss version="2.0" 
+  xmlns:content="http://purl.org/rss/1.0/modules/content/"
+  xmlns:dc="http://purl.org/dc/elements/1.1/"
+  xmlns:atom="http://www.w3.org/2005/Atom"
+  xmlns:media="http://search.yahoo.com/mrss/">
   <channel>
-    <title>ULMiND — Company Blog</title>
+    <title>ULMIND — Company Blog</title>
     <link>{SITE_URL}/blogs</link>
-    <description>Engineering insights, product updates and industry perspectives from the ULMiND team.</description>
+    <description>Engineering insights, product updates and industry perspectives from the ULMIND team.</description>
     <language>en-us</language>
     <lastBuildDate>{now_rfc}</lastBuildDate>
     <atom:link href="{SITE_URL}/rss.xml" rel="self" type="application/rss+xml"/>
     <image>
       <url>{SITE_URL}/logo.png</url>
-      <title>ULMiND</title>
+      <title>ULMIND</title>
       <link>{SITE_URL}</link>
     </image>
 {channel_items}
@@ -435,7 +455,7 @@ async def blogs_rss_feed(db=Depends(get_db)):
     return Response(
         content=rss_xml,
         media_type="application/rss+xml; charset=utf-8",
-        headers={"Cache-Control": "public, max-age=3600"},
+        headers={"Cache-Control": "public, max-age=1800"},
     )
 
 
