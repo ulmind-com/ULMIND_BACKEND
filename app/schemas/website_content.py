@@ -144,6 +144,53 @@ class FestiveBannerResponse(FestiveBannerBase):
     model_config = ConfigDict(populate_by_name=True)
 
 
+# ─── BLOG POSTS ───────────────────────────────────────────────────────────────
+
+class BlogPostBase(BaseModel):
+    title: str = Field(..., description="Blog Title")
+    slug: str = Field(..., description="URL slug (e.g. 'how-to-integrate-chatgpt-2026')")
+    excerpt: str = Field(..., description="Short summary for card view")
+    content: str = Field(default="", description="Full markdown/html content")
+    category: str = Field(default="Software Engineering", description="Industry/Category e.g. 'AI Integration', 'Custom Software'")
+    service: Optional[str] = Field(default=None, description="Related service e.g. 'Web Development', 'Mobile Apps', 'Cloud'")
+    tags: List[str] = Field(default_factory=list, description="Tags/Hashtags e.g. ['#AI Integration', '#ChatGPT']")
+    author: str = Field(default="ULMIND Team", description="Author Name")
+    authorRole: Optional[str] = Field(default="Tech Specialist", description="Author Role / Designation")
+    authorAvatar: Optional[str] = Field(default=None, description="Author Avatar URL")
+    readTime: str = Field(default="5 min read", description="Estimated read time")
+    published: bool = Field(default=True, description="Whether blog is published live")
+    featured: bool = Field(default=False, description="Featured post on top")
+    order: int = Field(default=0, description="Display sort order")
+    views: int = Field(default=0, description="View count")
+
+class BlogPostCreate(BlogPostBase):
+    coverImage: Optional[ImageInfo] = None
+
+class BlogPostUpdate(BaseModel):
+    title: Optional[str] = None
+    slug: Optional[str] = None
+    excerpt: Optional[str] = None
+    content: Optional[str] = None
+    category: Optional[str] = None
+    service: Optional[str] = None
+    tags: Optional[List[str]] = None
+    author: Optional[str] = None
+    authorRole: Optional[str] = None
+    authorAvatar: Optional[str] = None
+    readTime: Optional[str] = None
+    published: Optional[bool] = None
+    featured: Optional[bool] = None
+    order: Optional[int] = None
+    views: Optional[int] = None
+    coverImage: Optional[ImageInfo] = None
+
+class BlogPostResponse(BlogPostBase):
+    id: PyObjectId = Field(alias="_id")
+    coverImage: Optional[ImageInfo] = None
+    created_at: datetime = Field(alias="createdAt", default_factory=get_now)
+    updated_at: datetime = Field(alias="updatedAt", default_factory=get_now)
+    model_config = ConfigDict(populate_by_name=True)
+
 # Rebuild models
 WebsiteStatBase.model_rebuild()
 WebsiteStatResponse.model_rebuild()
@@ -151,3 +198,5 @@ TestimonialBase.model_rebuild()
 TestimonialResponse.model_rebuild()
 PortfolioProjectBase.model_rebuild()
 PortfolioProjectResponse.model_rebuild()
+BlogPostBase.model_rebuild()
+BlogPostResponse.model_rebuild()
