@@ -10,6 +10,7 @@ from app.schemas.website_content import (
     TestimonialCreate, TestimonialUpdate, TestimonialResponse,
     PortfolioProjectCreate, PortfolioProjectUpdate, PortfolioProjectResponse,
     FestiveBannerBase, FestiveBannerUpdate, FestiveBannerResponse,
+    BlogPostCreate, BlogPostUpdate, BlogPostResponse,
     ImageInfo
 )
 from app.api.deps import get_current_active_admin
@@ -23,6 +24,7 @@ TESTIMONIALS_COLLECTION = "testimonials"
 PROJECTS_COLLECTION = "portfolio_projects"
 FESTIVE_COLLECTION = "festive_banner"
 FESTIVE_KEY = "singleton"
+BLOGS_COLLECTION = "blogs"
 
 def _parse_id(id: str) -> ObjectId:
     try:
@@ -285,3 +287,148 @@ async def update_festive_banner(
     base = FestiveBannerBase().model_dump()
     base.update({k: cfg[k] for k in base.keys() if k in cfg})
     return {**base, "active": _compute_active(base)}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  BLOG POSTS
+# ══════════════════════════════════════════════════════════════════════════════
+
+import re
+
+def _slugify(text: str) -> str:
+    text = text.lower().strip()
+    text = re.sub(r"[^\w\s-]", "", text)
+    text = re.sub(r"[\s_-]+", "-", text)
+    return text.strip("-")
+
+@router.get("/blogs", response_model=List[BlogPostResponse])
+async def list_blogs(
+    category: str = None,
+    service: str = None,
+    tag: str = None,
+    search: str = None,
+    limit: int = 50,
+    skip: int = 0,
+    db=Depends(get_db)
+):
+    """Public: list published blogs with optional filtering & search."""
+    query: dict = {"published": True}
+    if category and category != "All" and category != "All Industries":
+        query["category"] = category
+    if service and service != "All" and service != "All Services":
+        query["service"] = service
+    if tag:
+        query["tags"] = {"$in": [tag]}
+    if search and search.strip():
+        s = search.strip()
+        query["$or"] = [
+            {"title": {"$regex": s, "$options": "i"}},
+            {"excerpt": {"$regex": s, "$options": "i"}},
+            {"category": {"$regex": s, "$options": "i"}},
+            {"tags": {"$elemMatch": {"$regex": s, "$options": "i"}}}
+        ]
+    items = await db[BLOGS_COLLECTION].find(query).sort([("order", 1), ("createdAt", -1)]).skip(skip).limit(limit).to_list(length=limit)
+    return items
+
+@router.get("/blogs/admin/all", response_model=List[BlogPostResponse])
+async def list_all_blogs_admin(
+    db=Depends(get_db),
+    _admin=Depends(get_current_active_admin)
+):
+    """Admin: list all blogs (including unpublished drafts)."""
+    items = await db[BLOGS_COLLECTION].find({}).sort([("order", 1), ("createdAt", -1)]).to_list(length=200)
+    return items
+
+@router.get("/blogs/{slug_or_id}", response_model=BlogPostResponse)
+async def get_blog_detail(slug_or_id: str, db=Depends(get_db)):
+    """Public: get single blog by slug or ID, increments views."""
+    query = {"slug": slug_or_id}
+    try:
+        obj_id = ObjectId(slug_or_id)
+        query = {"$or": [{"slug": slug_or_id}, {"_id": obj_id}]}
+    except Exception:
+        pass
+
+    blog = await db[BLOGS_COLLECTION].find_one_and_update(
+        query,
+        {"$inc": {"views": 1}},
+        return_document=True
+    )
+    if not blog:
+        raise HTTPException(status_code=404, detail="Blog post not found")
+    return blog
+
+@router.post("/blogs", response_model=BlogPostResponse, status_code=201)
+async def create_blog(
+    blog_in: BlogPostCreate,
+    db=Depends(get_db),
+    _admin=Depends(get_current_active_admin)
+):
+    """Admin: create a new blog post."""
+    now = get_now()
+    doc = blog_in.model_dump()
+    if not doc.get("slug"):
+        doc["slug"] = _slugify(doc["title"])
+    else:
+        doc["slug"] = _slugify(doc["slug"])
+
+    # Ensure unique slug
+    existing = await db[BLOGS_COLLECTION].find_one({"slug": doc["slug"]})
+    if existing:
+        doc["slug"] = f"{doc['slug']}-{int(now.timestamp())}"
+
+    doc["created_at"] = now
+    doc["updated_at"] = now
+    if "views" not in doc:
+        doc["views"] = 0
+
+    result = await db[BLOGS_COLLECTION].insert_one(doc)
+    created = await db[BLOGS_COLLECTION].find_one({"_id": result.inserted_id})
+    return created
+
+@router.put("/blogs/{id}", response_model=BlogPostResponse)
+async def update_blog(
+    id: str,
+    blog_in: BlogPostUpdate,
+    db=Depends(get_db),
+    _admin=Depends(get_current_active_admin)
+):
+    """Admin: update a blog post."""
+    update_data = blog_in.model_dump(exclude_unset=True)
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No fields provided for update")
+
+    if "slug" in update_data and update_data["slug"]:
+        update_data["slug"] = _slugify(update_data["slug"])
+
+    update_data["updated_at"] = get_now()
+
+    result = await db[BLOGS_COLLECTION].find_one_and_update(
+        {"_id": _parse_id(id)},
+        {"$set": update_data},
+        return_document=True
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="Blog not found")
+    return result
+
+@router.delete("/blogs/{id}")
+async def delete_blog(
+    id: str,
+    db=Depends(get_db),
+    _admin=Depends(get_current_active_admin)
+):
+    """Admin: delete a blog post."""
+    obj_id = _parse_id(id)
+    existing = await db[BLOGS_COLLECTION].find_one({"_id": obj_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Blog not found")
+
+    if existing.get("coverImage") and existing["coverImage"].get("public_id"):
+        try:
+            await delete_image(existing["coverImage"]["public_id"])
+        except Exception as e:
+            logger.warning(f"Failed to delete blog cover image: {e}")
+
+    await db[BLOGS_COLLECTION].delete_one({"_id": obj_id})
+    return {"status": "success", "message": "Blog deleted successfully"}
