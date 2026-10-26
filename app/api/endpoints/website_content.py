@@ -1,6 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi.responses import Response
 from typing import List
 from bson import ObjectId
+from xml.sax.saxutils import escape as xml_escape
+from datetime import datetime, timezone
+from email.utils import format_datetime
 import logging
 
 from app.db.database import get_db
@@ -338,6 +342,102 @@ async def list_all_blogs_admin(
     """Admin: list all blogs (including unpublished drafts)."""
     items = await db[BLOGS_COLLECTION].find({}).sort([("order", 1), ("createdAt", -1)]).to_list(length=200)
     return items
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  RSS FEED
+# ══════════════════════════════════════════════════════════════════════════════
+
+SITE_URL = "https://www.ulmind.com"
+
+def _rfc822(dt) -> str:
+    """Convert a datetime or ISO string to RFC 822 for RSS <pubDate>."""
+    if isinstance(dt, str):
+        try:
+            dt = datetime.fromisoformat(dt.replace("Z", "+00:00"))
+        except Exception:
+            dt = datetime.now(timezone.utc)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return format_datetime(dt, usegmt=True)
+
+def _strip_md(text: str, max_len: int = 500) -> str:
+    """Rough markdown-to-plain-text for RSS descriptions."""
+    import re as _re
+    text = _re.sub(r"!\[.*?\]\(.*?\)", "", text)       # images
+    text = _re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", text)  # links
+    text = _re.sub(r"[#*>`_~\-]", "", text)             # formatting chars
+    text = _re.sub(r"\n{2,}", "\n", text).strip()
+    if len(text) > max_len:
+        text = text[:max_len].rsplit(" ", 1)[0] + "…"
+    return text
+
+@router.get("/blogs/rss.xml", response_class=Response)
+async def blogs_rss_feed(db=Depends(get_db)):
+    """Public: RSS 2.0 feed of published blog posts for LinkedIn / RSS readers."""
+    blogs = await (
+        db[BLOGS_COLLECTION]
+        .find({"published": True})
+        .sort([("createdAt", -1)])
+        .limit(50)
+        .to_list(length=50)
+    )
+
+    items_xml = []
+    for b in blogs:
+        slug = b.get("slug", "")
+        title = xml_escape(b.get("title", ""))
+        link = f"{SITE_URL}/blogs/{slug}"
+        desc = xml_escape(
+            b.get("excerpt") or _strip_md(b.get("content", ""))
+        )
+        author = xml_escape(b.get("author", "ULMiND"))
+        pub_date = _rfc822(b.get("createdAt") or b.get("created_at", ""))
+        category = xml_escape(b.get("category", ""))
+        cover = b.get("coverImage", {}).get("url", "")
+
+        enclosure = ""
+        if cover:
+            enclosure = f'<enclosure url="{xml_escape(cover)}" type="image/jpeg" length="0"/>'
+
+        items_xml.append(f"""    <item>
+      <title>{title}</title>
+      <link>{link}</link>
+      <description>{desc}</description>
+      <author>{author}</author>
+      <pubDate>{pub_date}</pubDate>
+      <category>{category}</category>
+      <guid isPermaLink="true">{link}</guid>
+      {enclosure}
+    </item>""")
+
+    channel_items = "\n".join(items_xml)
+    now_rfc = _rfc822(datetime.now(timezone.utc))
+
+    rss_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>ULMiND — Company Blog</title>
+    <link>{SITE_URL}/blogs</link>
+    <description>Engineering insights, product updates and industry perspectives from the ULMiND team.</description>
+    <language>en-us</language>
+    <lastBuildDate>{now_rfc}</lastBuildDate>
+    <atom:link href="{SITE_URL}/rss.xml" rel="self" type="application/rss+xml"/>
+    <image>
+      <url>{SITE_URL}/logo.png</url>
+      <title>ULMiND</title>
+      <link>{SITE_URL}</link>
+    </image>
+{channel_items}
+  </channel>
+</rss>"""
+
+    return Response(
+        content=rss_xml,
+        media_type="application/rss+xml; charset=utf-8",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+
 
 @router.get("/blogs/{slug_or_id}", response_model=BlogPostResponse)
 async def get_blog_detail(slug_or_id: str, db=Depends(get_db)):
